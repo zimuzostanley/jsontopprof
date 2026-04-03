@@ -2801,6 +2801,50 @@ const TextView = {
     ]);
   }
 };
+function openInPerfetto(profile) {
+  const win = window.open("https://ui.perfetto.dev", "_blank");
+  if (!win) return;
+  const blob2 = new Blob([profile.data]);
+  const ds = new DecompressionStream("gzip");
+  const reader = blob2.stream().pipeThrough(ds).getReader();
+  const chunks = [];
+  (async () => {
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+    let len = 0;
+    for (const c of chunks) len += c.length;
+    const raw = new Uint8Array(len);
+    let off = 0;
+    for (const c of chunks) {
+      raw.set(c, off);
+      off += c.length;
+    }
+    const trySend = () => {
+      win.postMessage("PING", "*");
+    };
+    const onMessage = (e) => {
+      if (e.data !== "PONG") return;
+      window.removeEventListener("message", onMessage);
+      win.postMessage({
+        perfetto: {
+          buffer: raw.buffer,
+          title: profile.name,
+          fileName: profile.fileName.replace(".gz", "")
+        }
+      }, "*");
+    };
+    window.addEventListener("message", onMessage);
+    const interval = setInterval(trySend, 500);
+    trySend();
+    setTimeout(() => {
+      clearInterval(interval);
+      window.removeEventListener("message", onMessage);
+    }, 15e3);
+  })();
+}
 const selected = /* @__PURE__ */ new Set();
 let lastProfileSet = "";
 function syncSelection() {
@@ -2842,14 +2886,8 @@ const Results = {
     const isText = S.resultsView === "text";
     return m$1("div", [
       // Summary card with view toggle
-      // Hint: open in Perfetto
       m$1(".card.hint-card", [
-        m$1(".hint-text", [
-          "Download and open in ",
-          m$1("strong", "Perfetto UI"),
-          " at ",
-          m$1("code.code-inline", "ui.perfetto.dev")
-        ])
+        m$1(".hint-text", "Click Perfetto to open directly in ui.perfetto.dev, or Download to save.")
       ]),
       // Summary
       m$1(".card", [
@@ -2905,10 +2943,16 @@ const Results = {
             ]),
             m$1(".profile-file", p.fileName)
           ]),
-          m$1("button.btn.sm.primary", {
-            onclick: () => downloadProfile(p),
-            "aria-label": `Download ${p.fileName}`
-          }, "Download")
+          m$1(".profile-actions", [
+            m$1("button.btn.sm", {
+              onclick: () => openInPerfetto(p),
+              "aria-label": `Open ${p.name} in Perfetto`
+            }, "Perfetto"),
+            m$1("button.btn.sm.primary", {
+              onclick: () => downloadProfile(p),
+              "aria-label": `Download ${p.fileName}`
+            }, "Download")
+          ])
         ])
       )) : null,
       // Text view
@@ -3309,6 +3353,7 @@ select { cursor: pointer; }
 .profile-name { font-weight: 600; font-size: 0.9rem; }
 .profile-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 1px; }
 .profile-file { font-family: var(--mono); font-size: 0.72rem; color: var(--text-tertiary); }
+.profile-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .checkbox-accent { cursor: pointer; accent-color: var(--accent); }
 
 /* --- Steps --- */
