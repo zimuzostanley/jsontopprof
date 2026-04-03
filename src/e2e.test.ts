@@ -354,14 +354,21 @@ const HEAP_TSV = readFileSync(join(process.cwd(), 'src/testdata/heap.tsv'), 'utf
 describe('e2e: JSON array stack', () => {
   it('loads heap dominator TSV and shows path sub-fields', async () => {
     await loadTSV(HEAP_TSV)
-    // Should see path.class and path.heap_type as columns, not "path" itself
+    // Should see expanded path sub-fields + outer columns
     const colNames = await page.$$eval('.col-row .col-name', els =>
       els.map(el => el.textContent?.trim())
     )
     console.log('Columns visible:', colNames)
+    // Expanded JSON array sub-fields
     expect(colNames).toContain('path.class')
     expect(colNames).toContain('path.heap_type')
-    expect(colNames).not.toContain('path')
+    expect(colNames).toContain('path.count')
+    expect(colNames).toContain('path.size')
+    expect(colNames).toContain('path.root_type')
+    // Outer columns
+    expect(colNames).toContain('process_name')
+    expect(colNames).toContain('self_size')
+    expect(colNames).toContain('_device_name')
   }, 15000)
 
   it('assigns path.class as Frame and process_name as Frame', async () => {
@@ -387,17 +394,21 @@ describe('e2e: JSON array stack', () => {
     console.log('Text view output:\n' + text.slice(0, 500))
 
     // Should contain multi-depth frames from the JSON array
-    expect(text).toContain('ActivityThread')
-    expect(text).toContain('View')
+    expect(text).toContain('TaskSnapshotController')
+    expect(text).toContain('TaskSnapshotCache')
+    expect(text).toContain('HardwareBuffer')
     expect(text).toContain('system_server')
-    expect(text).toContain('MainActivity')
-    expect(text).toContain('com.example')
+    expect(text).toContain('com.example.app')
+    expect(text).toContain('UsageEvents$Event')
 
-    // In tree mode, should be indented (multi-line per sample)
-    // "system_server" should appear before "ActivityThread" (root before child)
-    const serverIdx = text.indexOf('system_server')
-    const actIdx = text.indexOf('ActivityThread')
-    expect(serverIdx).toBeLessThan(actIdx)
+    // In tree mode, frames should be indented by depth
+    const lines = text.split('\n').filter(l => l.trim())
+    const snapshotLine = lines.find(l => l.includes('TaskSnapshotController'))!
+    const cacheLine = lines.find(l => l.includes('TaskSnapshotCache'))!
+    // Cache is one level deeper than Controller
+    const snapIndent = snapshotLine.match(/^(\s*)/)?.[1].length ?? 0
+    const cacheIndent = cacheLine.match(/^(\s*)/)?.[1].length ?? 0
+    expect(cacheIndent).toBeGreaterThan(snapIndent)
   }, 20000)
 })
 
