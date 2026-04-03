@@ -1693,29 +1693,6 @@ function isNumericString(s) {
   if (s === "") return false;
   return !isNaN(Number(s)) && isFinite(Number(s));
 }
-function suggestDefaults(columns) {
-  const roles = /* @__PURE__ */ new Map();
-  const frameOrder = [];
-  const topLevel = columns.filter((c) => c.jsonKey === void 0);
-  let foundFrame = false;
-  for (const col of topLevel) {
-    if (!foundFrame && !col.isNumeric) {
-      roles.set(col.name, "frame");
-      frameOrder.push(col.name);
-      foundFrame = true;
-    } else if (col.isNumeric) {
-      roles.set(col.name, "metric");
-    } else {
-      roles.set(col.name, "none");
-    }
-  }
-  for (const col of columns) {
-    if (!roles.has(col.name)) {
-      roles.set(col.name, "none");
-    }
-  }
-  return { roles, frameOrder };
-}
 function serializeConfig(config) {
   return {
     roles: [...config.roles.entries()],
@@ -2263,15 +2240,9 @@ function loadData(text, fileName) {
         if (!S.roles.has(col.name)) S.roles.set(col.name, "none");
       }
     } else {
-      const defaults = suggestDefaults(S.columns);
-      S.roles = defaults.roles;
-      S.frameOrder = defaults.frameOrder;
+      S.roles = new Map(S.columns.map((c) => [c.name, "none"]));
+      S.frameOrder = [];
       S.metricUnits = /* @__PURE__ */ new Map();
-      for (const col of S.columns) {
-        if (defaults.roles.get(col.name) === "metric") {
-          S.metricUnits.set(col.name, inferUnit(col.name));
-        }
-      }
     }
     S.step = "configure";
   } catch (e) {
@@ -2288,7 +2259,7 @@ function setRole(columnName, role) {
     S.frameOrder = S.frameOrder.filter((n) => n !== columnName);
   }
   if (role === "metric" && !S.metricUnits.has(columnName)) {
-    S.metricUnits.set(columnName, "count");
+    S.metricUnits.set(columnName, inferUnit(columnName));
   }
 }
 function moveFrame(name, direction) {
@@ -2489,13 +2460,6 @@ const Import = {
     return renderImportForm();
   }
 };
-const ROLES = [
-  { key: "none", label: "Skip" },
-  { key: "frame", label: "Frame" },
-  { key: "metric", label: "Metric" },
-  { key: "label", label: "Label" },
-  { key: "partition", label: "Partition" }
-];
 const UNIT_SUGGESTIONS = [
   "bytes",
   "count",
@@ -2509,77 +2473,100 @@ const UNIT_SUGGESTIONS = [
   "errors"
 ];
 function isJsonParent(col) {
+  if (col.isJsonArray) return true;
   if (S.columns.some((c) => c.source === col.name && c.jsonKey !== void 0 && !c.isJsonArrayField)) {
     return col.name === col.source && !col.jsonKey;
   }
-  if (col.isJsonArray) return true;
   return false;
+}
+function availableFor(role) {
+  return S.columns.filter((c) => {
+    if (isJsonParent(c)) return false;
+    const current = S.roles.get(c.name) ?? "none";
+    if (current !== "none") return false;
+    if (role === "metric" && !c.isNumeric) return false;
+    return true;
+  });
+}
+function assignedAs(role) {
+  return (role === "frame" ? S.frameOrder : S.columns.filter((c) => S.roles.get(c.name) === role).map((c) => c.name)).map((name) => S.columns.find((c) => c.name === name)).filter((c) => c !== void 0);
+}
+function addColumn(name, role) {
+  setRole(name, role);
+}
+function removeColumn(name) {
+  setRole(name, "none");
+}
+function colLabel(col) {
+  if (col.jsonKey !== void 0) return `${col.source}.${col.jsonKey}`;
+  return col.name;
+}
+function renderAddDropdown(role, label) {
+  const available = availableFor(role);
+  if (available.length === 0) return null;
+  return m$1("select.add-col-select", {
+    "aria-label": label,
+    value: "",
+    onchange: (e) => {
+      const val = e.target.value;
+      if (val) addColumn(val, role);
+    }
+  }, [
+    m$1("option", { value: "", disabled: true, selected: true }, `+ ${label}`),
+    ...available.map((c) => m$1("option", { value: c.name }, colLabel(c)))
+  ]);
 }
 const Configure = {
   view() {
     if (!S.data) return null;
-    const frameColumns = S.frameOrder;
-    const metricColumns = S.columns.filter((c) => S.roles.get(c.name) === "metric");
-    const hasFrames = frameColumns.length > 0;
+    const frames = assignedAs("frame");
+    const metrics = assignedAs("metric");
+    const labels = assignedAs("label");
+    const partitions = assignedAs("partition");
     return m$1("div", [
-      // Column assignment
+      // Frames
       m$1(".card", [
-        m$1(".card-title", "Assign column roles"),
-        m$1(".col-list", S.columns.map((col) => {
-          if (isJsonParent(col)) return m$1("div", { key: `skip:${col.name}`, style: "display:none" });
-          const role = S.roles.get(col.name) ?? "none";
-          return m$1(".col-row", { key: col.name }, [
-            m$1(
-              ".col-role",
-              ROLES.filter((r) => r.key !== "metric" || col.isNumeric).map(
-                (r) => m$1("button.role-btn", {
-                  class: role === r.key ? "active" : "",
-                  onclick: () => setRole(col.name, r.key)
-                }, r.label)
-              )
-            ),
-            m$1(".col-name", [
-              col.jsonKey !== void 0 ? [m$1("span.json-prefix", `${col.source}.`), col.jsonKey] : col.name
-            ]),
-            m$1(".col-samples", col.sampleValues.join(", ") || "—")
-          ]);
-        }))
-      ]),
-      // Frame order
-      hasFrames ? m$1(".card", [
-        m$1(".card-title", "Frame order (top → root, bottom → leaf)"),
-        m$1(".frame-order", frameColumns.map((name, idx) => {
-          const col = S.columns.find((c) => c.name === name);
+        m$1(".card-title-row", [
+          m$1(".card-title", "Frames"),
+          renderAddDropdown("frame", "Add frame")
+        ]),
+        frames.length === 0 ? m$1(".empty-hint", "Select at least one column to define the call stack.") : m$1(".frame-order", frames.map((col, idx) => {
           const isFirst = idx === 0;
-          const isLast = idx === frameColumns.length - 1;
-          return m$1(".frame-item", { key: name }, [
+          const isLast = idx === frames.length - 1;
+          return m$1(".frame-item", { key: col.name }, [
             m$1(".frame-idx", `${idx + 1}.`),
-            m$1(".frame-name", name),
-            frameColumns.length > 1 ? m$1(".frame-label", isFirst ? "root" : isLast ? "leaf" : "") : null,
+            m$1(".frame-name", colLabel(col)),
+            frames.length > 1 ? m$1(".frame-label", isFirst ? "root" : isLast ? "leaf" : "") : null,
+            col.isJsonArrayField ? m$1(".frame-label", `expands ${col.source}`) : null,
             m$1(".frame-arrows", [
               m$1("button", {
                 disabled: isFirst,
-                onclick: () => moveFrame(name, -1),
-                "aria-label": `Move ${name} up`
+                onclick: () => moveFrame(col.name, -1),
+                "aria-label": `Move ${col.name} up`
               }, "▲"),
               m$1("button", {
                 disabled: isLast,
-                onclick: () => moveFrame(name, 1),
-                "aria-label": `Move ${name} down`
+                onclick: () => moveFrame(col.name, 1),
+                "aria-label": `Move ${col.name} down`
               }, "▼")
             ]),
-            // JSON array sub-field: show which array column it expands
-            (col == null ? void 0 : col.isJsonArrayField) ? m$1(".frame-label", `expands ${col.source}`) : null
+            m$1("button.remove-btn", {
+              onclick: () => removeColumn(col.name),
+              "aria-label": `Remove ${col.name}`
+            }, "×")
           ]);
         }))
-      ]) : null,
-      // Metrics & units
+      ]),
+      // Metrics
       m$1(".card", [
-        m$1(".card-title", metricColumns.length > 0 ? "Metrics & units" : "Metrics"),
+        m$1(".card-title-row", [
+          m$1(".card-title", "Metrics"),
+          renderAddDropdown("metric", "Add metric")
+        ]),
         m$1(".metric-list", [
-          ...metricColumns.map(
+          ...metrics.map(
             (col) => m$1(".metric-item", { key: col.name }, [
-              m$1(".metric-name", col.name),
+              m$1(".metric-name", colLabel(col)),
               m$1("input[type=text].unit-input", {
                 "aria-label": `Unit for ${col.name}`,
                 list: "unit-suggestions",
@@ -2588,7 +2575,11 @@ const Configure = {
                   S.metricUnits.set(col.name, e.target.value);
                 },
                 placeholder: "unit"
-              })
+              }),
+              m$1("button.remove-btn", {
+                onclick: () => removeColumn(col.name),
+                "aria-label": `Remove ${col.name}`
+              }, "×")
             ])
           ),
           m$1(
@@ -2602,6 +2593,38 @@ const Configure = {
           ])
         ])
       ]),
+      // Labels
+      m$1(".card", [
+        m$1(".card-title-row", [
+          m$1(".card-title", "Labels"),
+          renderAddDropdown("label", "Add label")
+        ]),
+        labels.length === 0 ? m$1(".empty-hint", "Optional metadata attached to each sample.") : m$1(".tag-list", labels.map(
+          (col) => m$1(".tag-item", { key: col.name }, [
+            m$1("span", colLabel(col)),
+            m$1("button.remove-btn", {
+              onclick: () => removeColumn(col.name),
+              "aria-label": `Remove ${col.name}`
+            }, "×")
+          ])
+        ))
+      ]),
+      // Partition
+      m$1(".card", [
+        m$1(".card-title-row", [
+          m$1(".card-title", "Partition by"),
+          renderAddDropdown("partition", "Add partition")
+        ]),
+        partitions.length === 0 ? m$1(".empty-hint", "Optional. Splits output into separate profiles.") : m$1(".tag-list", partitions.map(
+          (col) => m$1(".tag-item", { key: col.name }, [
+            m$1("span", colLabel(col)),
+            m$1("button.remove-btn", {
+              onclick: () => removeColumn(col.name),
+              "aria-label": `Remove ${col.name}`
+            }, "×")
+          ])
+        ))
+      ]),
       // Generate
       m$1(".actions", [
         m$1(".spacer"),
@@ -2610,12 +2633,11 @@ const Configure = {
           m$1(".spinner"),
           S.progress ? ` ${S.progress.message}` : " Generating…"
         ]) : m$1("button.btn.primary", {
-          disabled: !hasFrames,
+          disabled: frames.length === 0,
           onclick: generate,
-          title: hasFrames ? "" : "Select at least one frame column"
+          title: frames.length === 0 ? "Add at least one frame column" : ""
         }, "Generate profiles")
       ]),
-      // Progress bar
       S.generating && S.progress ? m$1(".progress-bar", [
         m$1(".progress-fill", { style: `width: ${Math.round(S.progress.pct)}%` })
       ]) : null
@@ -3180,50 +3202,57 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 .preview-table tr:last-child td { border-bottom: none; }
 .preview-table .truncated { color: var(--text-tertiary); font-style: italic; }
 
-/* --- Column config --- */
-.col-list { display: flex; flex-direction: column; gap: 3px; }
-
-.col-row {
-  display: grid;
-  grid-template-columns: auto 160px 1fr;
-  gap: 10px;
-  align-items: center;
-  padding: 5px 10px;
+/* --- Configure: add column dropdown --- */
+.add-col-select {
+  padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  font-size: 0.8rem;
-}
-.col-row:hover { background: var(--bg-hover); }
-.col-row.json-parent {
-  background: var(--bg-accent);
-  border-style: dashed;
-  grid-template-columns: 1fr;
-  padding: 4px 10px;
-  font-size: 0.77rem;
+  background: var(--bg-input);
   color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
-.col-name {
+/* --- Configure: empty state hint --- */
+.empty-hint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  padding: 4px 0;
+}
+
+/* --- Configure: tag list (labels, partitions) --- */
+.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.8rem;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--bg-card);
 }
-.col-name .json-prefix { color: var(--text-tertiary); }
 
-.col-samples {
-  font-family: var(--mono);
-  font-size: 0.72rem;
+/* --- Configure: remove button --- */
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: color var(--transition);
 }
-
-.col-role { display: flex; gap: 2px; }
+.remove-btn:hover { color: var(--error); }
 
 .role-btn {
   padding: 2px 7px;
