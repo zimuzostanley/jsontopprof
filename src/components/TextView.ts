@@ -39,12 +39,9 @@ function formatAnnotation(s: TextSample, metrics: Set<string>): string {
 
 function formatSampleTree(s: TextSample, metrics: Set<string>): string {
   const annotation = formatAnnotation(s, metrics)
-  if (s.stack.length === 1) return s.stack[0] + annotation
   const lines: string[] = []
   for (let i = 0; i < s.stack.length; i++) {
-    const indent = '  '.repeat(i)
-    const isLeaf = i === s.stack.length - 1
-    lines.push(indent + s.stack[i] + (isLeaf ? annotation : ''))
+    lines.push('  '.repeat(i) + s.stack[i] + annotation)
   }
   return lines.join('\n')
 }
