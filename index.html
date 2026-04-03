@@ -1,0 +1,3227 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON to pprof</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script type="module" crossorigin>(function polyfill() {
+  const relList = document.createElement("link").relList;
+  if (relList && relList.supports && relList.supports("modulepreload")) {
+    return;
+  }
+  for (const link of document.querySelectorAll('link[rel="modulepreload"]')) {
+    processPreload(link);
+  }
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type !== "childList") {
+        continue;
+      }
+      for (const node of mutation.addedNodes) {
+        if (node.tagName === "LINK" && node.rel === "modulepreload")
+          processPreload(node);
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
+  function getFetchOpts(link) {
+    const fetchOpts = {};
+    if (link.integrity) fetchOpts.integrity = link.integrity;
+    if (link.referrerPolicy) fetchOpts.referrerPolicy = link.referrerPolicy;
+    if (link.crossOrigin === "use-credentials")
+      fetchOpts.credentials = "include";
+    else if (link.crossOrigin === "anonymous") fetchOpts.credentials = "omit";
+    else fetchOpts.credentials = "same-origin";
+    return fetchOpts;
+  }
+  function processPreload(link) {
+    if (link.ep)
+      return;
+    link.ep = true;
+    const fetchOpts = getFetchOpts(link);
+    fetch(link.href, fetchOpts);
+  }
+})();
+function getDefaultExportFromCjs(x) {
+  return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
+}
+var vnode;
+var hasRequiredVnode;
+function requireVnode() {
+  if (hasRequiredVnode) return vnode;
+  hasRequiredVnode = 1;
+  function Vnode2(tag, key, attrs, children, text, dom) {
+    return { tag, key, attrs, children, text, dom, is: void 0, domSize: void 0, state: void 0, events: void 0, instance: void 0 };
+  }
+  Vnode2.normalize = function(node) {
+    if (Array.isArray(node)) return Vnode2("[", void 0, void 0, Vnode2.normalizeChildren(node), void 0, void 0);
+    if (node == null || typeof node === "boolean") return null;
+    if (typeof node === "object") return node;
+    return Vnode2("#", void 0, void 0, String(node), void 0, void 0);
+  };
+  Vnode2.normalizeChildren = function(input) {
+    var children = new Array(input.length);
+    var numKeyed = 0;
+    for (var i = 0; i < input.length; i++) {
+      children[i] = Vnode2.normalize(input[i]);
+      if (children[i] !== null && children[i].key != null) numKeyed++;
+    }
+    if (numKeyed !== 0 && numKeyed !== input.length) {
+      throw new TypeError(
+        children.includes(null) ? "In fragments, vnodes must either all have keys or none have keys. You may wish to consider using an explicit keyed empty fragment, m.fragment({key: ...}), instead of a hole." : "In fragments, vnodes must either all have keys or none have keys."
+      );
+    }
+    return children;
+  };
+  vnode = Vnode2;
+  return vnode;
+}
+var Vnode$6 = requireVnode();
+var hyperscriptVnode$2 = function(attrs, children) {
+  if (attrs == null || typeof attrs === "object" && attrs.tag == null && !Array.isArray(attrs)) {
+    if (children.length === 1 && Array.isArray(children[0])) children = children[0];
+  } else {
+    children = children.length === 0 && Array.isArray(attrs) ? attrs : [attrs, ...children];
+    attrs = void 0;
+  }
+  return Vnode$6("", attrs && attrs.key, attrs, children);
+};
+var hasOwn$2 = {}.hasOwnProperty;
+var emptyAttrs$2 = {};
+var emptyAttrs$1 = emptyAttrs$2;
+var cachedAttrsIsStaticMap$2 = /* @__PURE__ */ new Map([[emptyAttrs$1, true]]);
+var Vnode$5 = requireVnode();
+var hyperscriptVnode$1 = hyperscriptVnode$2;
+var hasOwn$1 = hasOwn$2;
+var emptyAttrs = emptyAttrs$2;
+var cachedAttrsIsStaticMap$1 = cachedAttrsIsStaticMap$2;
+var selectorParser = /(?:(^|#|\.)([^#\.\[\]]+))|(\[(.+?)(?:\s*=\s*("|'|)((?:\\["'\]]|.)*?)\5)?\])/g;
+var selectorCache = /* @__PURE__ */ Object.create(null);
+function isEmpty(object) {
+  for (var key in object) if (hasOwn$1.call(object, key)) return false;
+  return true;
+}
+function isFormAttributeKey(key) {
+  return key === "value" || key === "checked" || key === "selectedIndex" || key === "selected";
+}
+function compileSelector(selector) {
+  var match, tag = "div", classes = [], attrs = {}, isStatic = true;
+  while (match = selectorParser.exec(selector)) {
+    var type = match[1], value = match[2];
+    if (type === "" && value !== "") tag = value;
+    else if (type === "#") attrs.id = value;
+    else if (type === ".") classes.push(value);
+    else if (match[3][0] === "[") {
+      var attrValue = match[6];
+      if (attrValue) attrValue = attrValue.replace(/\\(["'])/g, "$1").replace(/\\\\/g, "\\");
+      if (match[4] === "class") classes.push(attrValue);
+      else {
+        attrs[match[4]] = attrValue === "" ? attrValue : attrValue || true;
+        if (isFormAttributeKey(match[4])) isStatic = false;
+      }
+    }
+  }
+  if (classes.length > 0) attrs.className = classes.join(" ");
+  if (isEmpty(attrs)) attrs = emptyAttrs;
+  else cachedAttrsIsStaticMap$1.set(attrs, isStatic);
+  return selectorCache[selector] = { tag, attrs, is: attrs.is };
+}
+function execSelector(state, vnode2) {
+  vnode2.tag = state.tag;
+  var attrs = vnode2.attrs;
+  if (attrs == null) {
+    vnode2.attrs = state.attrs;
+    vnode2.is = state.is;
+    return vnode2;
+  }
+  if (hasOwn$1.call(attrs, "class")) {
+    if (attrs.class != null) attrs.className = attrs.class;
+    attrs.class = null;
+  }
+  if (state.attrs !== emptyAttrs) {
+    var className = attrs.className;
+    attrs = Object.assign({}, state.attrs, attrs);
+    if (state.attrs.className != null) attrs.className = className != null ? String(state.attrs.className) + " " + String(className) : state.attrs.className;
+  }
+  if (state.tag === "input" && hasOwn$1.call(attrs, "type")) {
+    attrs = Object.assign({ type: attrs.type }, attrs);
+  }
+  vnode2.is = attrs.is;
+  vnode2.attrs = attrs;
+  return vnode2;
+}
+function hyperscript$3(selector, attrs, ...children) {
+  if (selector == null || typeof selector !== "string" && typeof selector !== "function" && typeof selector.view !== "function") {
+    throw Error("The selector must be either a string or a component.");
+  }
+  var vnode2 = hyperscriptVnode$1(attrs, children);
+  if (typeof selector === "string") {
+    vnode2.children = Vnode$5.normalizeChildren(vnode2.children);
+    if (selector !== "[") return execSelector(selectorCache[selector] || compileSelector(selector), vnode2);
+  }
+  if (vnode2.attrs == null) vnode2.attrs = {};
+  vnode2.tag = selector;
+  return vnode2;
+}
+var hyperscript_1$1 = hyperscript$3;
+var Vnode$4 = requireVnode();
+var trust = function(html) {
+  if (html == null) html = "";
+  return Vnode$4("<", void 0, void 0, html, void 0, void 0);
+};
+var Vnode$3 = requireVnode();
+var hyperscriptVnode = hyperscriptVnode$2;
+var fragment = function(attrs, ...children) {
+  var vnode2 = hyperscriptVnode(attrs, children);
+  if (vnode2.attrs == null) vnode2.attrs = {};
+  vnode2.tag = "[";
+  vnode2.children = Vnode$3.normalizeChildren(vnode2.children);
+  return vnode2;
+};
+var hyperscript$2 = hyperscript_1$1;
+hyperscript$2.trust = trust;
+hyperscript$2.fragment = fragment;
+var hyperscript_1 = hyperscript$2;
+var delayedRemoval$1 = /* @__PURE__ */ new WeakMap();
+var domFor_1;
+var hasRequiredDomFor;
+function requireDomFor() {
+  if (hasRequiredDomFor) return domFor_1;
+  hasRequiredDomFor = 1;
+  var delayedRemoval2 = delayedRemoval$1;
+  function* domFor2(vnode2) {
+    var dom = vnode2.dom;
+    var domSize = vnode2.domSize;
+    var generation = delayedRemoval2.get(dom);
+    if (dom != null) do {
+      var nextSibling = dom.nextSibling;
+      if (delayedRemoval2.get(dom) === generation) {
+        yield dom;
+        domSize--;
+      }
+      dom = nextSibling;
+    } while (domSize);
+  }
+  domFor_1 = domFor2;
+  return domFor_1;
+}
+var Vnode$2 = requireVnode();
+var delayedRemoval = delayedRemoval$1;
+var domFor = requireDomFor();
+var cachedAttrsIsStaticMap = cachedAttrsIsStaticMap$2;
+var render$2 = function() {
+  var nameSpace = {
+    svg: "http://www.w3.org/2000/svg",
+    math: "http://www.w3.org/1998/Math/MathML"
+  };
+  var currentRedraw;
+  var currentRender;
+  function getDocument(dom) {
+    return dom.ownerDocument;
+  }
+  function getNameSpace(vnode2) {
+    return vnode2.attrs && vnode2.attrs.xmlns || nameSpace[vnode2.tag];
+  }
+  function checkState(vnode2, original) {
+    if (vnode2.state !== original) throw new Error("'vnode.state' must not be modified.");
+  }
+  function callHook(vnode2) {
+    var original = vnode2.state;
+    try {
+      return this.apply(original, arguments);
+    } finally {
+      checkState(vnode2, original);
+    }
+  }
+  function activeElement(dom) {
+    try {
+      return getDocument(dom).activeElement;
+    } catch (e) {
+      return null;
+    }
+  }
+  function createNodes(parent, vnodes, start, end, hooks, nextSibling, ns) {
+    for (var i = start; i < end; i++) {
+      var vnode2 = vnodes[i];
+      if (vnode2 != null) {
+        createNode(parent, vnode2, hooks, ns, nextSibling);
+      }
+    }
+  }
+  function createNode(parent, vnode2, hooks, ns, nextSibling) {
+    var tag = vnode2.tag;
+    if (typeof tag === "string") {
+      vnode2.state = {};
+      if (vnode2.attrs != null) initLifecycle(vnode2.attrs, vnode2, hooks);
+      switch (tag) {
+        case "#":
+          createText(parent, vnode2, nextSibling);
+          break;
+        case "<":
+          createHTML(parent, vnode2, ns, nextSibling);
+          break;
+        case "[":
+          createFragment(parent, vnode2, hooks, ns, nextSibling);
+          break;
+        default:
+          createElement(parent, vnode2, hooks, ns, nextSibling);
+      }
+    } else createComponent(parent, vnode2, hooks, ns, nextSibling);
+  }
+  function createText(parent, vnode2, nextSibling) {
+    vnode2.dom = getDocument(parent).createTextNode(vnode2.children);
+    insertDOM(parent, vnode2.dom, nextSibling);
+  }
+  var possibleParents = { caption: "table", thead: "table", tbody: "table", tfoot: "table", tr: "tbody", th: "tr", td: "tr", colgroup: "table", col: "colgroup" };
+  function createHTML(parent, vnode2, ns, nextSibling) {
+    var match = vnode2.children.match(/^\s*?<(\w+)/im) || [];
+    var temp = getDocument(parent).createElement(possibleParents[match[1]] || "div");
+    if (ns === "http://www.w3.org/2000/svg") {
+      temp.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg">' + vnode2.children + "</svg>";
+      temp = temp.firstChild;
+    } else {
+      temp.innerHTML = vnode2.children;
+    }
+    vnode2.dom = temp.firstChild;
+    vnode2.domSize = temp.childNodes.length;
+    var fragment2 = getDocument(parent).createDocumentFragment();
+    var child;
+    while (child = temp.firstChild) {
+      fragment2.appendChild(child);
+    }
+    insertDOM(parent, fragment2, nextSibling);
+  }
+  function createFragment(parent, vnode2, hooks, ns, nextSibling) {
+    var fragment2 = getDocument(parent).createDocumentFragment();
+    if (vnode2.children != null) {
+      var children = vnode2.children;
+      createNodes(fragment2, children, 0, children.length, hooks, null, ns);
+    }
+    vnode2.dom = fragment2.firstChild;
+    vnode2.domSize = fragment2.childNodes.length;
+    insertDOM(parent, fragment2, nextSibling);
+  }
+  function createElement(parent, vnode2, hooks, ns, nextSibling) {
+    var tag = vnode2.tag;
+    var attrs = vnode2.attrs;
+    var is = vnode2.is;
+    ns = getNameSpace(vnode2) || ns;
+    var element = ns ? is ? getDocument(parent).createElementNS(ns, tag, { is }) : getDocument(parent).createElementNS(ns, tag) : is ? getDocument(parent).createElement(tag, { is }) : getDocument(parent).createElement(tag);
+    vnode2.dom = element;
+    if (attrs != null) {
+      setAttrs(vnode2, attrs, ns);
+    }
+    insertDOM(parent, element, nextSibling);
+    if (!maybeSetContentEditable(vnode2)) {
+      if (vnode2.children != null) {
+        var children = vnode2.children;
+        createNodes(element, children, 0, children.length, hooks, null, ns);
+        if (vnode2.tag === "select" && attrs != null) setLateSelectAttrs(vnode2, attrs);
+      }
+    }
+  }
+  function initComponent(vnode2, hooks) {
+    var sentinel;
+    if (typeof vnode2.tag.view === "function") {
+      vnode2.state = Object.create(vnode2.tag);
+      sentinel = vnode2.state.view;
+      if (sentinel.$$reentrantLock$$ != null) return;
+      sentinel.$$reentrantLock$$ = true;
+    } else {
+      vnode2.state = void 0;
+      sentinel = vnode2.tag;
+      if (sentinel.$$reentrantLock$$ != null) return;
+      sentinel.$$reentrantLock$$ = true;
+      vnode2.state = vnode2.tag.prototype != null && typeof vnode2.tag.prototype.view === "function" ? new vnode2.tag(vnode2) : vnode2.tag(vnode2);
+    }
+    initLifecycle(vnode2.state, vnode2, hooks);
+    if (vnode2.attrs != null) initLifecycle(vnode2.attrs, vnode2, hooks);
+    vnode2.instance = Vnode$2.normalize(callHook.call(vnode2.state.view, vnode2));
+    if (vnode2.instance === vnode2) throw Error("A view cannot return the vnode it received as argument");
+    sentinel.$$reentrantLock$$ = null;
+  }
+  function createComponent(parent, vnode2, hooks, ns, nextSibling) {
+    initComponent(vnode2, hooks);
+    if (vnode2.instance != null) {
+      createNode(parent, vnode2.instance, hooks, ns, nextSibling);
+      vnode2.dom = vnode2.instance.dom;
+      vnode2.domSize = vnode2.instance.domSize;
+    } else {
+      vnode2.domSize = 0;
+    }
+  }
+  function updateNodes(parent, old, vnodes, hooks, nextSibling, ns) {
+    if (old === vnodes || old == null && vnodes == null) return;
+    else if (old == null || old.length === 0) createNodes(parent, vnodes, 0, vnodes.length, hooks, nextSibling, ns);
+    else if (vnodes == null || vnodes.length === 0) removeNodes(parent, old, 0, old.length);
+    else {
+      var isOldKeyed = old[0] != null && old[0].key != null;
+      var isKeyed = vnodes[0] != null && vnodes[0].key != null;
+      var start = 0, oldStart = 0;
+      if (!isOldKeyed) while (oldStart < old.length && old[oldStart] == null) oldStart++;
+      if (!isKeyed) while (start < vnodes.length && vnodes[start] == null) start++;
+      if (isOldKeyed !== isKeyed) {
+        removeNodes(parent, old, oldStart, old.length);
+        createNodes(parent, vnodes, start, vnodes.length, hooks, nextSibling, ns);
+      } else if (!isKeyed) {
+        var commonLength = old.length < vnodes.length ? old.length : vnodes.length;
+        start = start < oldStart ? start : oldStart;
+        for (; start < commonLength; start++) {
+          o = old[start];
+          v = vnodes[start];
+          if (o === v || o == null && v == null) continue;
+          else if (o == null) createNode(parent, v, hooks, ns, getNextSibling(old, start + 1, nextSibling));
+          else if (v == null) removeNode(parent, o);
+          else updateNode(parent, o, v, hooks, getNextSibling(old, start + 1, nextSibling), ns);
+        }
+        if (old.length > commonLength) removeNodes(parent, old, start, old.length);
+        if (vnodes.length > commonLength) createNodes(parent, vnodes, start, vnodes.length, hooks, nextSibling, ns);
+      } else {
+        var oldEnd = old.length - 1, end = vnodes.length - 1, map, o, v, oe, ve, topSibling;
+        while (oldEnd >= oldStart && end >= start) {
+          oe = old[oldEnd];
+          ve = vnodes[end];
+          if (oe.key !== ve.key) break;
+          if (oe !== ve) updateNode(parent, oe, ve, hooks, nextSibling, ns);
+          if (ve.dom != null) nextSibling = ve.dom;
+          oldEnd--, end--;
+        }
+        while (oldEnd >= oldStart && end >= start) {
+          o = old[oldStart];
+          v = vnodes[start];
+          if (o.key !== v.key) break;
+          oldStart++, start++;
+          if (o !== v) updateNode(parent, o, v, hooks, getNextSibling(old, oldStart, nextSibling), ns);
+        }
+        while (oldEnd >= oldStart && end >= start) {
+          if (start === end) break;
+          if (o.key !== ve.key || oe.key !== v.key) break;
+          topSibling = getNextSibling(old, oldStart, nextSibling);
+          moveDOM(parent, oe, topSibling);
+          if (oe !== v) updateNode(parent, oe, v, hooks, topSibling, ns);
+          if (++start <= --end) moveDOM(parent, o, nextSibling);
+          if (o !== ve) updateNode(parent, o, ve, hooks, nextSibling, ns);
+          if (ve.dom != null) nextSibling = ve.dom;
+          oldStart++;
+          oldEnd--;
+          oe = old[oldEnd];
+          ve = vnodes[end];
+          o = old[oldStart];
+          v = vnodes[start];
+        }
+        while (oldEnd >= oldStart && end >= start) {
+          if (oe.key !== ve.key) break;
+          if (oe !== ve) updateNode(parent, oe, ve, hooks, nextSibling, ns);
+          if (ve.dom != null) nextSibling = ve.dom;
+          oldEnd--, end--;
+          oe = old[oldEnd];
+          ve = vnodes[end];
+        }
+        if (start > end) removeNodes(parent, old, oldStart, oldEnd + 1);
+        else if (oldStart > oldEnd) createNodes(parent, vnodes, start, end + 1, hooks, nextSibling, ns);
+        else {
+          var originalNextSibling = nextSibling, vnodesLength = end - start + 1, oldIndices = new Array(vnodesLength), li = 0, i = 0, pos = 2147483647, matched = 0, map, lisIndices;
+          for (i = 0; i < vnodesLength; i++) oldIndices[i] = -1;
+          for (i = end; i >= start; i--) {
+            if (map == null) map = getKeyMap(old, oldStart, oldEnd + 1);
+            ve = vnodes[i];
+            var oldIndex = map[ve.key];
+            if (oldIndex != null) {
+              pos = oldIndex < pos ? oldIndex : -1;
+              oldIndices[i - start] = oldIndex;
+              oe = old[oldIndex];
+              old[oldIndex] = null;
+              if (oe !== ve) updateNode(parent, oe, ve, hooks, nextSibling, ns);
+              if (ve.dom != null) nextSibling = ve.dom;
+              matched++;
+            }
+          }
+          nextSibling = originalNextSibling;
+          if (matched !== oldEnd - oldStart + 1) removeNodes(parent, old, oldStart, oldEnd + 1);
+          if (matched === 0) createNodes(parent, vnodes, start, end + 1, hooks, nextSibling, ns);
+          else {
+            if (pos === -1) {
+              lisIndices = makeLisIndices(oldIndices);
+              li = lisIndices.length - 1;
+              for (i = end; i >= start; i--) {
+                v = vnodes[i];
+                if (oldIndices[i - start] === -1) createNode(parent, v, hooks, ns, nextSibling);
+                else {
+                  if (lisIndices[li] === i - start) li--;
+                  else moveDOM(parent, v, nextSibling);
+                }
+                if (v.dom != null) nextSibling = vnodes[i].dom;
+              }
+            } else {
+              for (i = end; i >= start; i--) {
+                v = vnodes[i];
+                if (oldIndices[i - start] === -1) createNode(parent, v, hooks, ns, nextSibling);
+                if (v.dom != null) nextSibling = vnodes[i].dom;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  function updateNode(parent, old, vnode2, hooks, nextSibling, ns) {
+    var oldTag = old.tag, tag = vnode2.tag;
+    if (oldTag === tag && old.is === vnode2.is) {
+      vnode2.state = old.state;
+      vnode2.events = old.events;
+      if (shouldNotUpdate(vnode2, old)) return;
+      if (typeof oldTag === "string") {
+        if (vnode2.attrs != null) {
+          updateLifecycle(vnode2.attrs, vnode2, hooks);
+        }
+        switch (oldTag) {
+          case "#":
+            updateText(old, vnode2);
+            break;
+          case "<":
+            updateHTML(parent, old, vnode2, ns, nextSibling);
+            break;
+          case "[":
+            updateFragment(parent, old, vnode2, hooks, nextSibling, ns);
+            break;
+          default:
+            updateElement(old, vnode2, hooks, ns);
+        }
+      } else updateComponent(parent, old, vnode2, hooks, nextSibling, ns);
+    } else {
+      removeNode(parent, old);
+      createNode(parent, vnode2, hooks, ns, nextSibling);
+    }
+  }
+  function updateText(old, vnode2) {
+    if (old.children.toString() !== vnode2.children.toString()) {
+      old.dom.nodeValue = vnode2.children;
+    }
+    vnode2.dom = old.dom;
+  }
+  function updateHTML(parent, old, vnode2, ns, nextSibling) {
+    if (old.children !== vnode2.children) {
+      removeDOM(parent, old);
+      createHTML(parent, vnode2, ns, nextSibling);
+    } else {
+      vnode2.dom = old.dom;
+      vnode2.domSize = old.domSize;
+    }
+  }
+  function updateFragment(parent, old, vnode2, hooks, nextSibling, ns) {
+    updateNodes(parent, old.children, vnode2.children, hooks, nextSibling, ns);
+    var domSize = 0, children = vnode2.children;
+    vnode2.dom = null;
+    if (children != null) {
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        if (child != null && child.dom != null) {
+          if (vnode2.dom == null) vnode2.dom = child.dom;
+          domSize += child.domSize || 1;
+        }
+      }
+    }
+    vnode2.domSize = domSize;
+  }
+  function updateElement(old, vnode2, hooks, ns) {
+    var element = vnode2.dom = old.dom;
+    ns = getNameSpace(vnode2) || ns;
+    if (old.attrs != vnode2.attrs || vnode2.attrs != null && !cachedAttrsIsStaticMap.get(vnode2.attrs)) {
+      updateAttrs(vnode2, old.attrs, vnode2.attrs, ns);
+    }
+    if (!maybeSetContentEditable(vnode2)) {
+      updateNodes(element, old.children, vnode2.children, hooks, null, ns);
+    }
+  }
+  function updateComponent(parent, old, vnode2, hooks, nextSibling, ns) {
+    vnode2.instance = Vnode$2.normalize(callHook.call(vnode2.state.view, vnode2));
+    if (vnode2.instance === vnode2) throw Error("A view cannot return the vnode it received as argument");
+    updateLifecycle(vnode2.state, vnode2, hooks);
+    if (vnode2.attrs != null) updateLifecycle(vnode2.attrs, vnode2, hooks);
+    if (vnode2.instance != null) {
+      if (old.instance == null) createNode(parent, vnode2.instance, hooks, ns, nextSibling);
+      else updateNode(parent, old.instance, vnode2.instance, hooks, nextSibling, ns);
+      vnode2.dom = vnode2.instance.dom;
+      vnode2.domSize = vnode2.instance.domSize;
+    } else {
+      if (old.instance != null) removeNode(parent, old.instance);
+      vnode2.domSize = 0;
+    }
+  }
+  function getKeyMap(vnodes, start, end) {
+    var map = /* @__PURE__ */ Object.create(null);
+    for (; start < end; start++) {
+      var vnode2 = vnodes[start];
+      if (vnode2 != null) {
+        var key = vnode2.key;
+        if (key != null) map[key] = start;
+      }
+    }
+    return map;
+  }
+  var lisTemp = [];
+  function makeLisIndices(a) {
+    var result = [0];
+    var u = 0, v = 0, i = 0;
+    var il = lisTemp.length = a.length;
+    for (var i = 0; i < il; i++) lisTemp[i] = a[i];
+    for (var i = 0; i < il; ++i) {
+      if (a[i] === -1) continue;
+      var j = result[result.length - 1];
+      if (a[j] < a[i]) {
+        lisTemp[i] = j;
+        result.push(i);
+        continue;
+      }
+      u = 0;
+      v = result.length - 1;
+      while (u < v) {
+        var c = (u >>> 1) + (v >>> 1) + (u & v & 1);
+        if (a[result[c]] < a[i]) {
+          u = c + 1;
+        } else {
+          v = c;
+        }
+      }
+      if (a[i] < a[result[u]]) {
+        if (u > 0) lisTemp[i] = result[u - 1];
+        result[u] = i;
+      }
+    }
+    u = result.length;
+    v = result[u - 1];
+    while (u-- > 0) {
+      result[u] = v;
+      v = lisTemp[v];
+    }
+    lisTemp.length = 0;
+    return result;
+  }
+  function getNextSibling(vnodes, i, nextSibling) {
+    for (; i < vnodes.length; i++) {
+      if (vnodes[i] != null && vnodes[i].dom != null) return vnodes[i].dom;
+    }
+    return nextSibling;
+  }
+  function moveDOM(parent, vnode2, nextSibling) {
+    if (vnode2.dom != null) {
+      var target;
+      if (vnode2.domSize == null || vnode2.domSize === 1) {
+        target = vnode2.dom;
+      } else {
+        target = getDocument(parent).createDocumentFragment();
+        for (var dom of domFor(vnode2)) target.appendChild(dom);
+      }
+      insertDOM(parent, target, nextSibling);
+    }
+  }
+  function insertDOM(parent, dom, nextSibling) {
+    if (nextSibling != null) parent.insertBefore(dom, nextSibling);
+    else parent.appendChild(dom);
+  }
+  function maybeSetContentEditable(vnode2) {
+    if (vnode2.attrs == null || vnode2.attrs.contenteditable == null && // attribute
+    vnode2.attrs.contentEditable == null) return false;
+    var children = vnode2.children;
+    if (children != null && children.length === 1 && children[0].tag === "<") {
+      var content = children[0].children;
+      if (vnode2.dom.innerHTML !== content) vnode2.dom.innerHTML = content;
+    } else if (children != null && children.length !== 0) throw new Error("Child node of a contenteditable must be trusted.");
+    return true;
+  }
+  function removeNodes(parent, vnodes, start, end) {
+    for (var i = start; i < end; i++) {
+      var vnode2 = vnodes[i];
+      if (vnode2 != null) removeNode(parent, vnode2);
+    }
+  }
+  function tryBlockRemove(parent, vnode2, source, counter) {
+    var original = vnode2.state;
+    var result = callHook.call(source.onbeforeremove, vnode2);
+    if (result == null) return;
+    var generation = currentRender;
+    for (var dom of domFor(vnode2)) delayedRemoval.set(dom, generation);
+    counter.v++;
+    Promise.resolve(result).finally(function() {
+      checkState(vnode2, original);
+      tryResumeRemove(parent, vnode2, counter);
+    });
+  }
+  function tryResumeRemove(parent, vnode2, counter) {
+    if (--counter.v === 0) {
+      onremove(vnode2);
+      removeDOM(parent, vnode2);
+    }
+  }
+  function removeNode(parent, vnode2) {
+    var counter = { v: 1 };
+    if (typeof vnode2.tag !== "string" && typeof vnode2.state.onbeforeremove === "function") tryBlockRemove(parent, vnode2, vnode2.state, counter);
+    if (vnode2.attrs && typeof vnode2.attrs.onbeforeremove === "function") tryBlockRemove(parent, vnode2, vnode2.attrs, counter);
+    tryResumeRemove(parent, vnode2, counter);
+  }
+  function removeDOM(parent, vnode2) {
+    if (vnode2.dom == null) return;
+    if (vnode2.domSize == null || vnode2.domSize === 1) {
+      parent.removeChild(vnode2.dom);
+    } else {
+      for (var dom of domFor(vnode2)) parent.removeChild(dom);
+    }
+  }
+  function onremove(vnode2) {
+    if (typeof vnode2.tag !== "string" && typeof vnode2.state.onremove === "function") callHook.call(vnode2.state.onremove, vnode2);
+    if (vnode2.attrs && typeof vnode2.attrs.onremove === "function") callHook.call(vnode2.attrs.onremove, vnode2);
+    if (typeof vnode2.tag !== "string") {
+      if (vnode2.instance != null) onremove(vnode2.instance);
+    } else {
+      if (vnode2.events != null) vnode2.events._ = null;
+      var children = vnode2.children;
+      if (Array.isArray(children)) {
+        for (var i = 0; i < children.length; i++) {
+          var child = children[i];
+          if (child != null) onremove(child);
+        }
+      }
+    }
+  }
+  function setAttrs(vnode2, attrs, ns) {
+    for (var key in attrs) {
+      setAttr(vnode2, key, null, attrs[key], ns);
+    }
+  }
+  function setAttr(vnode2, key, old, value, ns) {
+    if (key === "key" || value == null || isLifecycleMethod(key) || old === value && !isFormAttribute(vnode2, key) && typeof value !== "object") return;
+    if (key[0] === "o" && key[1] === "n") return updateEvent(vnode2, key, value);
+    if (key.slice(0, 6) === "xlink:") vnode2.dom.setAttributeNS("http://www.w3.org/1999/xlink", key.slice(6), value);
+    else if (key === "style") updateStyle(vnode2.dom, old, value);
+    else if (hasPropertyKey(vnode2, key, ns)) {
+      if (key === "value") {
+        if ((vnode2.tag === "input" || vnode2.tag === "textarea") && vnode2.dom.value === "" + value) return;
+        if (vnode2.tag === "select" && old !== null && vnode2.dom.value === "" + value) return;
+        if (vnode2.tag === "option" && old !== null && vnode2.dom.value === "" + value) return;
+        if (vnode2.tag === "input" && vnode2.attrs.type === "file" && "" + value !== "") {
+          console.error("`value` is read-only on file inputs!");
+          return;
+        }
+      }
+      if (vnode2.tag === "input" && key === "type") vnode2.dom.setAttribute(key, value);
+      else vnode2.dom[key] = value;
+    } else {
+      if (typeof value === "boolean") {
+        if (value) vnode2.dom.setAttribute(key, "");
+        else vnode2.dom.removeAttribute(key);
+      } else vnode2.dom.setAttribute(key === "className" ? "class" : key, value);
+    }
+  }
+  function removeAttr(vnode2, key, old, ns) {
+    if (key === "key" || old == null || isLifecycleMethod(key)) return;
+    if (key[0] === "o" && key[1] === "n") updateEvent(vnode2, key, void 0);
+    else if (key === "style") updateStyle(vnode2.dom, old, null);
+    else if (hasPropertyKey(vnode2, key, ns) && key !== "className" && key !== "title" && !(key === "value" && (vnode2.tag === "option" || vnode2.tag === "select" && vnode2.dom.selectedIndex === -1 && vnode2.dom === activeElement(vnode2.dom))) && !(vnode2.tag === "input" && key === "type")) {
+      vnode2.dom[key] = null;
+    } else {
+      var nsLastIndex = key.indexOf(":");
+      if (nsLastIndex !== -1) key = key.slice(nsLastIndex + 1);
+      if (old !== false) vnode2.dom.removeAttribute(key === "className" ? "class" : key);
+    }
+  }
+  function setLateSelectAttrs(vnode2, attrs) {
+    if ("value" in attrs) {
+      if (attrs.value === null) {
+        if (vnode2.dom.selectedIndex !== -1) vnode2.dom.value = null;
+      } else {
+        var normalized = "" + attrs.value;
+        if (vnode2.dom.value !== normalized || vnode2.dom.selectedIndex === -1) {
+          vnode2.dom.value = normalized;
+        }
+      }
+    }
+    if ("selectedIndex" in attrs) setAttr(vnode2, "selectedIndex", null, attrs.selectedIndex, void 0);
+  }
+  function updateAttrs(vnode2, old, attrs, ns) {
+    var val;
+    if (old != null) {
+      if (old === attrs && !cachedAttrsIsStaticMap.has(attrs)) {
+        console.warn("Don't reuse attrs object, use new object for every redraw, this will throw in next major");
+      }
+      for (var key in old) {
+        if ((val = old[key]) != null && (attrs == null || attrs[key] == null)) {
+          removeAttr(vnode2, key, val, ns);
+        }
+      }
+    }
+    if (attrs != null) {
+      for (var key in attrs) {
+        setAttr(vnode2, key, old && old[key], attrs[key], ns);
+      }
+    }
+  }
+  function isFormAttribute(vnode2, attr) {
+    return attr === "value" || attr === "checked" || attr === "selectedIndex" || attr === "selected" && (vnode2.dom === activeElement(vnode2.dom) || vnode2.tag === "option" && vnode2.dom.parentNode === activeElement(vnode2.dom));
+  }
+  function isLifecycleMethod(attr) {
+    return attr === "oninit" || attr === "oncreate" || attr === "onupdate" || attr === "onremove" || attr === "onbeforeremove" || attr === "onbeforeupdate";
+  }
+  function hasPropertyKey(vnode2, key, ns) {
+    return ns === void 0 && // If it's a custom element, just keep it.
+    (vnode2.tag.indexOf("-") > -1 || vnode2.is || // If it's a normal element, let's try to avoid a few browser bugs.
+    key !== "href" && key !== "list" && key !== "form" && key !== "width" && key !== "height") && key in vnode2.dom;
+  }
+  function updateStyle(element, old, style2) {
+    if (old === style2) ;
+    else if (style2 == null) {
+      element.style = "";
+    } else if (typeof style2 !== "object") {
+      element.style = style2;
+    } else if (old == null || typeof old !== "object") {
+      element.style = "";
+      for (var key in style2) {
+        var value = style2[key];
+        if (value != null) {
+          if (key.includes("-")) element.style.setProperty(key, String(value));
+          else element.style[key] = String(value);
+        }
+      }
+    } else {
+      for (var key in old) {
+        if (old[key] != null && style2[key] == null) {
+          if (key.includes("-")) element.style.removeProperty(key);
+          else element.style[key] = "";
+        }
+      }
+      for (var key in style2) {
+        var value = style2[key];
+        if (value != null && (value = String(value)) !== String(old[key])) {
+          if (key.includes("-")) element.style.setProperty(key, value);
+          else element.style[key] = value;
+        }
+      }
+    }
+  }
+  function EventDict() {
+    this._ = currentRedraw;
+  }
+  EventDict.prototype = /* @__PURE__ */ Object.create(null);
+  EventDict.prototype.handleEvent = function(ev) {
+    var handler = this["on" + ev.type];
+    var result;
+    if (typeof handler === "function") result = handler.call(ev.currentTarget, ev);
+    else if (typeof handler.handleEvent === "function") handler.handleEvent(ev);
+    var self2 = this;
+    if (self2._ != null) {
+      if (ev.redraw !== false) (0, self2._)();
+      if (result != null && typeof result.then === "function") {
+        Promise.resolve(result).then(function() {
+          if (self2._ != null && ev.redraw !== false) (0, self2._)();
+        });
+      }
+    }
+    if (result === false) {
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  };
+  function updateEvent(vnode2, key, value) {
+    if (vnode2.events != null) {
+      vnode2.events._ = currentRedraw;
+      if (vnode2.events[key] === value) return;
+      if (value != null && (typeof value === "function" || typeof value === "object")) {
+        if (vnode2.events[key] == null) vnode2.dom.addEventListener(key.slice(2), vnode2.events, false);
+        vnode2.events[key] = value;
+      } else {
+        if (vnode2.events[key] != null) vnode2.dom.removeEventListener(key.slice(2), vnode2.events, false);
+        vnode2.events[key] = void 0;
+      }
+    } else if (value != null && (typeof value === "function" || typeof value === "object")) {
+      vnode2.events = new EventDict();
+      vnode2.dom.addEventListener(key.slice(2), vnode2.events, false);
+      vnode2.events[key] = value;
+    }
+  }
+  function initLifecycle(source, vnode2, hooks) {
+    if (typeof source.oninit === "function") callHook.call(source.oninit, vnode2);
+    if (typeof source.oncreate === "function") hooks.push(callHook.bind(source.oncreate, vnode2));
+  }
+  function updateLifecycle(source, vnode2, hooks) {
+    if (typeof source.onupdate === "function") hooks.push(callHook.bind(source.onupdate, vnode2));
+  }
+  function shouldNotUpdate(vnode2, old) {
+    do {
+      if (vnode2.attrs != null && typeof vnode2.attrs.onbeforeupdate === "function") {
+        var force = callHook.call(vnode2.attrs.onbeforeupdate, vnode2, old);
+        if (force !== void 0 && !force) break;
+      }
+      if (typeof vnode2.tag !== "string" && typeof vnode2.state.onbeforeupdate === "function") {
+        var force = callHook.call(vnode2.state.onbeforeupdate, vnode2, old);
+        if (force !== void 0 && !force) break;
+      }
+      return false;
+    } while (false);
+    vnode2.dom = old.dom;
+    vnode2.domSize = old.domSize;
+    vnode2.instance = old.instance;
+    vnode2.attrs = old.attrs;
+    vnode2.children = old.children;
+    vnode2.text = old.text;
+    return true;
+  }
+  var currentDOM;
+  return function(dom, vnodes, redraw) {
+    if (!dom) throw new TypeError("DOM element being rendered to does not exist.");
+    if (currentDOM != null && dom.contains(currentDOM)) {
+      throw new TypeError("Node is currently being rendered to and thus is locked.");
+    }
+    var prevRedraw = currentRedraw;
+    var prevDOM = currentDOM;
+    var hooks = [];
+    var active = activeElement(dom);
+    var namespace = dom.namespaceURI;
+    currentDOM = dom;
+    currentRedraw = typeof redraw === "function" ? redraw : void 0;
+    currentRender = {};
+    try {
+      if (dom.vnodes == null) dom.textContent = "";
+      vnodes = Vnode$2.normalizeChildren(Array.isArray(vnodes) ? vnodes : [vnodes]);
+      updateNodes(dom, dom.vnodes, vnodes, hooks, null, namespace === "http://www.w3.org/1999/xhtml" ? void 0 : namespace);
+      dom.vnodes = vnodes;
+      if (active != null && activeElement(dom) !== active && typeof active.focus === "function") active.focus();
+      for (var i = 0; i < hooks.length; i++) hooks[i]();
+    } finally {
+      currentRedraw = prevRedraw;
+      currentDOM = prevDOM;
+    }
+  };
+};
+var render$1 = render$2();
+var Vnode$1 = requireVnode();
+var mountRedraw$4 = function(render2, schedule, console2) {
+  var subscriptions = [];
+  var pending = false;
+  var offset = -1;
+  function sync() {
+    for (offset = 0; offset < subscriptions.length; offset += 2) {
+      try {
+        render2(subscriptions[offset], Vnode$1(subscriptions[offset + 1]), redraw);
+      } catch (e) {
+        console2.error(e);
+      }
+    }
+    offset = -1;
+  }
+  function redraw() {
+    if (!pending) {
+      pending = true;
+      schedule(function() {
+        pending = false;
+        sync();
+      });
+    }
+  }
+  redraw.sync = sync;
+  function mount(root, component) {
+    if (component != null && component.view == null && typeof component !== "function") {
+      throw new TypeError("m.mount expects a component, not a vnode.");
+    }
+    var index = subscriptions.indexOf(root);
+    if (index >= 0) {
+      subscriptions.splice(index, 2);
+      if (index <= offset) offset -= 2;
+      render2(root, []);
+    }
+    if (component != null) {
+      subscriptions.push(root, component);
+      render2(root, Vnode$1(component), redraw);
+    }
+  }
+  return { mount, redraw };
+};
+var render = render$1;
+var mountRedraw$3 = mountRedraw$4(render, typeof requestAnimationFrame !== "undefined" ? requestAnimationFrame : null, typeof console !== "undefined" ? console : null);
+var build$1;
+var hasRequiredBuild$1;
+function requireBuild$1() {
+  if (hasRequiredBuild$1) return build$1;
+  hasRequiredBuild$1 = 1;
+  build$1 = function(object) {
+    if (Object.prototype.toString.call(object) !== "[object Object]") return "";
+    var args = [];
+    for (var key in object) {
+      destructure(key, object[key]);
+    }
+    return args.join("&");
+    function destructure(key2, value) {
+      if (Array.isArray(value)) {
+        for (var i = 0; i < value.length; i++) {
+          destructure(key2 + "[" + i + "]", value[i]);
+        }
+      } else if (Object.prototype.toString.call(value) === "[object Object]") {
+        for (var i in value) {
+          destructure(key2 + "[" + i + "]", value[i]);
+        }
+      } else args.push(encodeURIComponent(key2) + (value != null && value !== "" ? "=" + encodeURIComponent(value) : ""));
+    }
+  };
+  return build$1;
+}
+var build;
+var hasRequiredBuild;
+function requireBuild() {
+  if (hasRequiredBuild) return build;
+  hasRequiredBuild = 1;
+  var buildQueryString = requireBuild$1();
+  build = function(template, params) {
+    if (/:([^\/\.-]+)(\.{3})?:/.test(template)) {
+      throw new SyntaxError("Template parameter names must be separated by either a '/', '-', or '.'.");
+    }
+    if (params == null) return template;
+    var queryIndex = template.indexOf("?");
+    var hashIndex = template.indexOf("#");
+    var queryEnd = hashIndex < 0 ? template.length : hashIndex;
+    var pathEnd = queryIndex < 0 ? queryEnd : queryIndex;
+    var path = template.slice(0, pathEnd);
+    var query = {};
+    Object.assign(query, params);
+    var resolved = path.replace(/:([^\/\.-]+)(\.{3})?/g, function(m3, key, variadic) {
+      delete query[key];
+      if (params[key] == null) return m3;
+      return variadic ? params[key] : encodeURIComponent(String(params[key]));
+    });
+    var newQueryIndex = resolved.indexOf("?");
+    var newHashIndex = resolved.indexOf("#");
+    var newQueryEnd = newHashIndex < 0 ? resolved.length : newHashIndex;
+    var newPathEnd = newQueryIndex < 0 ? newQueryEnd : newQueryIndex;
+    var result = resolved.slice(0, newPathEnd);
+    if (queryIndex >= 0) result += template.slice(queryIndex, queryEnd);
+    if (newQueryIndex >= 0) result += (queryIndex < 0 ? "?" : "&") + resolved.slice(newQueryIndex, newQueryEnd);
+    var querystring = buildQueryString(query);
+    if (querystring) result += (queryIndex < 0 && newQueryIndex < 0 ? "?" : "&") + querystring;
+    if (hashIndex >= 0) result += template.slice(hashIndex);
+    if (newHashIndex >= 0) result += (hashIndex < 0 ? "" : "&") + resolved.slice(newHashIndex);
+    return result;
+  };
+  return build;
+}
+var buildPathname$1 = requireBuild();
+var hasOwn = hasOwn$2;
+var request$2 = function($window, oncompletion) {
+  function PromiseProxy(executor) {
+    return new Promise(executor);
+  }
+  function makeRequest(url, args) {
+    return new Promise(function(resolve, reject) {
+      url = buildPathname$1(url, args.params);
+      var method = args.method != null ? args.method.toUpperCase() : "GET";
+      var body = args.body;
+      var assumeJSON = (args.serialize == null || args.serialize === JSON.serialize) && !(body instanceof $window.FormData || body instanceof $window.URLSearchParams);
+      var responseType = args.responseType || (typeof args.extract === "function" ? "" : "json");
+      var xhr = new $window.XMLHttpRequest(), aborted = false, isTimeout = false;
+      var original = xhr, replacedAbort;
+      var abort = xhr.abort;
+      xhr.abort = function() {
+        aborted = true;
+        abort.call(this);
+      };
+      xhr.open(method, url, args.async !== false, typeof args.user === "string" ? args.user : void 0, typeof args.password === "string" ? args.password : void 0);
+      if (assumeJSON && body != null && !hasHeader(args, "content-type")) {
+        xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+      }
+      if (typeof args.deserialize !== "function" && !hasHeader(args, "accept")) {
+        xhr.setRequestHeader("Accept", "application/json, text/*");
+      }
+      if (args.withCredentials) xhr.withCredentials = args.withCredentials;
+      if (args.timeout) xhr.timeout = args.timeout;
+      xhr.responseType = responseType;
+      for (var key in args.headers) {
+        if (hasOwn.call(args.headers, key)) {
+          xhr.setRequestHeader(key, args.headers[key]);
+        }
+      }
+      xhr.onreadystatechange = function(ev) {
+        if (aborted) return;
+        if (ev.target.readyState === 4) {
+          try {
+            var success = ev.target.status >= 200 && ev.target.status < 300 || ev.target.status === 304 || /^file:\/\//i.test(url);
+            var response = ev.target.response, message;
+            if (responseType === "json") {
+              if (!ev.target.responseType && typeof args.extract !== "function") {
+                try {
+                  response = JSON.parse(ev.target.responseText);
+                } catch (e) {
+                  response = null;
+                }
+              }
+            } else if (!responseType || responseType === "text") {
+              if (response == null) response = ev.target.responseText;
+            }
+            if (typeof args.extract === "function") {
+              response = args.extract(ev.target, args);
+              success = true;
+            } else if (typeof args.deserialize === "function") {
+              response = args.deserialize(response);
+            }
+            if (success) {
+              if (typeof args.type === "function") {
+                if (Array.isArray(response)) {
+                  for (var i = 0; i < response.length; i++) {
+                    response[i] = new args.type(response[i]);
+                  }
+                } else response = new args.type(response);
+              }
+              resolve(response);
+            } else {
+              var completeErrorResponse = function() {
+                try {
+                  message = ev.target.responseText;
+                } catch (e) {
+                  message = response;
+                }
+                var error = new Error(message);
+                error.code = ev.target.status;
+                error.response = response;
+                reject(error);
+              };
+              if (xhr.status === 0) {
+                setTimeout(function() {
+                  if (isTimeout) return;
+                  completeErrorResponse();
+                });
+              } else completeErrorResponse();
+            }
+          } catch (e) {
+            reject(e);
+          }
+        }
+      };
+      xhr.ontimeout = function(ev) {
+        isTimeout = true;
+        var error = new Error("Request timed out");
+        error.code = ev.target.status;
+        reject(error);
+      };
+      if (typeof args.config === "function") {
+        xhr = args.config(xhr, args, url) || xhr;
+        if (xhr !== original) {
+          replacedAbort = xhr.abort;
+          xhr.abort = function() {
+            aborted = true;
+            replacedAbort.call(this);
+          };
+        }
+      }
+      if (body == null) xhr.send();
+      else if (typeof args.serialize === "function") xhr.send(args.serialize(body));
+      else if (body instanceof $window.FormData || body instanceof $window.URLSearchParams) xhr.send(body);
+      else xhr.send(JSON.stringify(body));
+    });
+  }
+  PromiseProxy.prototype = Promise.prototype;
+  PromiseProxy.__proto__ = Promise;
+  function hasHeader(args, name) {
+    for (var key in args.headers) {
+      if (hasOwn.call(args.headers, key) && key.toLowerCase() === name) return true;
+    }
+    return false;
+  }
+  return {
+    request: function(url, args) {
+      if (typeof url !== "string") {
+        args = url;
+        url = url.url;
+      } else if (args == null) args = {};
+      var promise = makeRequest(url, args);
+      if (args.background === true) return promise;
+      var count = 0;
+      function complete() {
+        if (--count === 0 && typeof oncompletion === "function") oncompletion();
+      }
+      return wrap(promise);
+      function wrap(promise2) {
+        var then = promise2.then;
+        promise2.constructor = PromiseProxy;
+        promise2.then = function() {
+          count++;
+          var next = then.apply(promise2, arguments);
+          next.then(complete, function(e) {
+            complete();
+            if (count === 0) throw e;
+          });
+          return wrap(next);
+        };
+        return promise2;
+      }
+    }
+  };
+};
+var mountRedraw$2 = mountRedraw$3;
+var request$1 = request$2(typeof window !== "undefined" ? window : null, mountRedraw$2.redraw);
+var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
+var decodeURIComponentSafe$1 = function(str) {
+  return String(str).replace(validUtf8Encodings, decodeURIComponent);
+};
+var parse$1;
+var hasRequiredParse$1;
+function requireParse$1() {
+  if (hasRequiredParse$1) return parse$1;
+  hasRequiredParse$1 = 1;
+  var decodeURIComponentSafe2 = decodeURIComponentSafe$1;
+  parse$1 = function(string) {
+    if (string === "" || string == null) return {};
+    if (string.charAt(0) === "?") string = string.slice(1);
+    var entries = string.split("&"), counters = {}, data = {};
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i].split("=");
+      var key = decodeURIComponentSafe2(entry[0]);
+      var value = entry.length === 2 ? decodeURIComponentSafe2(entry[1]) : "";
+      if (value === "true") value = true;
+      else if (value === "false") value = false;
+      var levels = key.split(/\]\[?|\[/);
+      var cursor = data;
+      if (key.indexOf("[") > -1) levels.pop();
+      for (var j = 0; j < levels.length; j++) {
+        var level = levels[j], nextLevel = levels[j + 1];
+        var isNumber = nextLevel == "" || !isNaN(parseInt(nextLevel, 10));
+        if (level === "") {
+          var key = levels.slice(0, j).join();
+          if (counters[key] == null) {
+            counters[key] = Array.isArray(cursor) ? cursor.length : 0;
+          }
+          level = counters[key]++;
+        } else if (level === "__proto__") break;
+        if (j === levels.length - 1) cursor[level] = value;
+        else {
+          var desc = Object.getOwnPropertyDescriptor(cursor, level);
+          if (desc != null) desc = desc.value;
+          if (desc == null) cursor[level] = desc = isNumber ? [] : {};
+          cursor = desc;
+        }
+      }
+    }
+    return data;
+  };
+  return parse$1;
+}
+var parse;
+var hasRequiredParse;
+function requireParse() {
+  if (hasRequiredParse) return parse;
+  hasRequiredParse = 1;
+  var parseQueryString = requireParse$1();
+  parse = function(url) {
+    var queryIndex = url.indexOf("?");
+    var hashIndex = url.indexOf("#");
+    var queryEnd = hashIndex < 0 ? url.length : hashIndex;
+    var pathEnd = queryIndex < 0 ? queryEnd : queryIndex;
+    var path = url.slice(0, pathEnd).replace(/\/{2,}/g, "/");
+    if (!path) path = "/";
+    else {
+      if (path[0] !== "/") path = "/" + path;
+    }
+    return {
+      path,
+      params: queryIndex < 0 ? {} : parseQueryString(url.slice(queryIndex + 1, queryEnd))
+    };
+  };
+  return parse;
+}
+var parsePathname$1 = requireParse();
+var compileTemplate$1 = function(template) {
+  var templateData = parsePathname$1(template);
+  var templateKeys = Object.keys(templateData.params);
+  var keys = [];
+  var regexp = new RegExp("^" + templateData.path.replace(
+    // I escape literal text so people can use things like `:file.:ext` or
+    // `:lang-:locale` in routes. This is all merged into one pass so I
+    // don't also accidentally escape `-` and make it harder to detect it to
+    // ban it from template parameters.
+    /:([^\/.-]+)(\.{3}|\.(?!\.)|-)?|[\\^$*+.()|\[\]{}]/g,
+    function(m3, key, extra) {
+      if (key == null) return "\\" + m3;
+      keys.push({ k: key, r: extra === "..." });
+      if (extra === "...") return "(.*)";
+      if (extra === ".") return "([^/]+)\\.";
+      return "([^/]+)" + (extra || "");
+    }
+  ) + "\\/?$");
+  return function(data) {
+    for (var i = 0; i < templateKeys.length; i++) {
+      if (templateData.params[templateKeys[i]] !== data.params[templateKeys[i]]) return false;
+    }
+    if (!keys.length) return regexp.test(data.path);
+    var values = regexp.exec(data.path);
+    if (values == null) return false;
+    for (var i = 0; i < keys.length; i++) {
+      data.params[keys[i].k] = keys[i].r ? values[i + 1] : decodeURIComponent(values[i + 1]);
+    }
+    return true;
+  };
+};
+var censor$1;
+var hasRequiredCensor;
+function requireCensor() {
+  if (hasRequiredCensor) return censor$1;
+  hasRequiredCensor = 1;
+  var hasOwn2 = hasOwn$2;
+  var magic = /^(?:key|oninit|oncreate|onbeforeupdate|onupdate|onbeforeremove|onremove)$/;
+  censor$1 = function(attrs, extras) {
+    var result = {};
+    if (extras != null) {
+      for (var key in attrs) {
+        if (hasOwn2.call(attrs, key) && !magic.test(key) && extras.indexOf(key) < 0) {
+          result[key] = attrs[key];
+        }
+      }
+    } else {
+      for (var key in attrs) {
+        if (hasOwn2.call(attrs, key) && !magic.test(key)) {
+          result[key] = attrs[key];
+        }
+      }
+    }
+    return result;
+  };
+  return censor$1;
+}
+var Vnode = requireVnode();
+var hyperscript$1 = hyperscript_1$1;
+var decodeURIComponentSafe = decodeURIComponentSafe$1;
+var buildPathname = requireBuild();
+var parsePathname = requireParse();
+var compileTemplate = compileTemplate$1;
+var censor = requireCensor();
+var router$1 = function($window, mountRedraw2) {
+  var p = Promise.resolve();
+  var scheduled = false;
+  var ready = false;
+  var hasBeenResolved = false;
+  var dom, compiled, fallbackRoute;
+  var currentResolver, component, attrs, currentPath, lastUpdate;
+  var RouterRoot = {
+    onremove: function() {
+      ready = hasBeenResolved = false;
+      $window.removeEventListener("popstate", fireAsync, false);
+    },
+    view: function() {
+      var vnode2 = Vnode(component, attrs.key, attrs);
+      if (currentResolver) return currentResolver.render(vnode2);
+      return [vnode2];
+    }
+  };
+  var SKIP = route2.SKIP = {};
+  function resolveRoute() {
+    scheduled = false;
+    var prefix = $window.location.hash;
+    if (route2.prefix[0] !== "#") {
+      prefix = $window.location.search + prefix;
+      if (route2.prefix[0] !== "?") {
+        prefix = $window.location.pathname + prefix;
+        if (prefix[0] !== "/") prefix = "/" + prefix;
+      }
+    }
+    var path = decodeURIComponentSafe(prefix).slice(route2.prefix.length);
+    var data = parsePathname(path);
+    Object.assign(data.params, $window.history.state);
+    function reject(e) {
+      console.error(e);
+      route2.set(fallbackRoute, null, { replace: true });
+    }
+    loop(0);
+    function loop(i) {
+      for (; i < compiled.length; i++) {
+        if (compiled[i].check(data)) {
+          var payload = compiled[i].component;
+          var matchedRoute = compiled[i].route;
+          var localComp = payload;
+          var update = lastUpdate = function(comp) {
+            if (update !== lastUpdate) return;
+            if (comp === SKIP) return loop(i + 1);
+            component = comp != null && (typeof comp.view === "function" || typeof comp === "function") ? comp : "div";
+            attrs = data.params, currentPath = path, lastUpdate = null;
+            currentResolver = payload.render ? payload : null;
+            if (hasBeenResolved) mountRedraw2.redraw();
+            else {
+              hasBeenResolved = true;
+              mountRedraw2.mount(dom, RouterRoot);
+            }
+          };
+          if (payload.view || typeof payload === "function") {
+            payload = {};
+            update(localComp);
+          } else if (payload.onmatch) {
+            p.then(function() {
+              return payload.onmatch(data.params, path, matchedRoute);
+            }).then(update, path === fallbackRoute ? null : reject);
+          } else update(
+            /* "div" */
+          );
+          return;
+        }
+      }
+      if (path === fallbackRoute) {
+        throw new Error("Could not resolve default route " + fallbackRoute + ".");
+      }
+      route2.set(fallbackRoute, null, { replace: true });
+    }
+  }
+  function fireAsync() {
+    if (!scheduled) {
+      scheduled = true;
+      setTimeout(resolveRoute);
+    }
+  }
+  function route2(root, defaultRoute, routes) {
+    if (!root) throw new TypeError("DOM element being rendered to does not exist.");
+    compiled = Object.keys(routes).map(function(route3) {
+      if (route3[0] !== "/") throw new SyntaxError("Routes must start with a '/'.");
+      if (/:([^\/\.-]+)(\.{3})?:/.test(route3)) {
+        throw new SyntaxError("Route parameter names must be separated with either '/', '.', or '-'.");
+      }
+      return {
+        route: route3,
+        component: routes[route3],
+        check: compileTemplate(route3)
+      };
+    });
+    fallbackRoute = defaultRoute;
+    if (defaultRoute != null) {
+      var defaultData = parsePathname(defaultRoute);
+      if (!compiled.some(function(i) {
+        return i.check(defaultData);
+      })) {
+        throw new ReferenceError("Default route doesn't match any known routes.");
+      }
+    }
+    dom = root;
+    $window.addEventListener("popstate", fireAsync, false);
+    ready = true;
+    resolveRoute();
+  }
+  route2.set = function(path, data, options) {
+    if (lastUpdate != null) {
+      options = options || {};
+      options.replace = true;
+    }
+    lastUpdate = null;
+    path = buildPathname(path, data);
+    if (ready) {
+      fireAsync();
+      var state = options ? options.state : null;
+      var title = options ? options.title : null;
+      if (options && options.replace) $window.history.replaceState(state, title, route2.prefix + path);
+      else $window.history.pushState(state, title, route2.prefix + path);
+    } else {
+      $window.location.href = route2.prefix + path;
+    }
+  };
+  route2.get = function() {
+    return currentPath;
+  };
+  route2.prefix = "#!";
+  route2.Link = {
+    view: function(vnode2) {
+      var child = hyperscript$1(
+        vnode2.attrs.selector || "a",
+        censor(vnode2.attrs, ["options", "params", "selector", "onclick"]),
+        vnode2.children
+      );
+      var options, onclick, href;
+      if (child.attrs.disabled = Boolean(child.attrs.disabled)) {
+        child.attrs.href = null;
+        child.attrs["aria-disabled"] = "true";
+      } else {
+        options = vnode2.attrs.options;
+        onclick = vnode2.attrs.onclick;
+        href = buildPathname(child.attrs.href, vnode2.attrs.params);
+        child.attrs.href = route2.prefix + href;
+        child.attrs.onclick = function(e) {
+          var result;
+          if (typeof onclick === "function") {
+            result = onclick.call(e.currentTarget, e);
+          } else if (onclick == null || typeof onclick !== "object") ;
+          else if (typeof onclick.handleEvent === "function") {
+            onclick.handleEvent(e);
+          }
+          if (
+            // Skip if `onclick` prevented default
+            result !== false && !e.defaultPrevented && // Ignore everything but left clicks
+            (e.button === 0 || e.which === 0 || e.which === 1) && // Let the browser handle `target=_blank`, etc.
+            (!e.currentTarget.target || e.currentTarget.target === "_self") && // No modifier keys
+            !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
+          ) {
+            e.preventDefault();
+            e.redraw = false;
+            route2.set(href, null, options);
+          }
+        };
+      }
+      return child;
+    }
+  };
+  route2.param = function(key) {
+    return attrs && key != null ? attrs[key] : attrs;
+  };
+  return route2;
+};
+var mountRedraw$1 = mountRedraw$3;
+var route = router$1(typeof window !== "undefined" ? window : null, mountRedraw$1);
+var hyperscript = hyperscript_1;
+var mountRedraw = mountRedraw$3;
+var request = request$1;
+var router = route;
+var m = function m2() {
+  return hyperscript.apply(this, arguments);
+};
+m.m = hyperscript;
+m.trust = hyperscript.trust;
+m.fragment = hyperscript.fragment;
+m.Fragment = "[";
+m.mount = mountRedraw.mount;
+m.route = router;
+m.render = render$1;
+m.redraw = mountRedraw.redraw;
+m.request = request.request;
+m.parseQueryString = requireParse$1();
+m.buildQueryString = requireBuild$1();
+m.parsePathname = requireParse();
+m.buildPathname = requireBuild();
+m.vnode = requireVnode();
+m.censor = requireCensor();
+m.domFor = requireDomFor();
+var mithril = m;
+const m$1 = /* @__PURE__ */ getDefaultExportFromCjs(mithril);
+function parseTSV(text) {
+  const records = parseDelimited(text, "	");
+  if (records.length === 0) return { headers: [], rows: [] };
+  const headers = records[0];
+  const rows = [];
+  for (let i = 1; i < records.length; i++) {
+    const fields = records[i];
+    if (fields.length === 1 && fields[0] === "") continue;
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = fields[j] ?? "";
+    }
+    rows.push(row);
+  }
+  return { headers, rows };
+}
+function parseDelimited(text, delimiter) {
+  const records = [];
+  let fields = [];
+  let field = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+        } else {
+          inQuotes = false;
+          i++;
+        }
+      } else {
+        field += ch;
+        i++;
+      }
+    } else {
+      if (ch === '"' && field === "") {
+        inQuotes = true;
+        i++;
+      } else if (ch === '"') {
+        field += ch;
+        i++;
+      } else if (ch === delimiter) {
+        fields.push(field);
+        field = "";
+        i++;
+      } else if (ch === "\n") {
+        fields.push(field);
+        records.push(fields);
+        fields = [];
+        field = "";
+        i++;
+      } else if (ch === "\r") {
+        fields.push(field);
+        records.push(fields);
+        fields = [];
+        field = "";
+        i++;
+        if (i < text.length && text[i] === "\n") i++;
+      } else {
+        field += ch;
+        i++;
+      }
+    }
+  }
+  if (field !== "" || fields.length > 0) {
+    fields.push(field);
+    records.push(fields);
+  }
+  return records;
+}
+const ANALYSIS_SAMPLE_SIZE = 20;
+function analyzeColumns(data) {
+  const columns = [];
+  const sampleSize = Math.min(data.rows.length, ANALYSIS_SAMPLE_SIZE);
+  for (const header of data.headers) {
+    const samples = data.rows.slice(0, sampleSize).map((r) => r[header] ?? "");
+    const nonEmpty = samples.filter((s) => s !== "");
+    const jsonResults = nonEmpty.map(tryParseJSON);
+    const jsonTypes = new Set(jsonResults.map((r) => r.type));
+    if (jsonTypes.has("object") && !jsonTypes.has("other")) {
+      const allKeys = /* @__PURE__ */ new Set();
+      const keySamples = /* @__PURE__ */ new Map();
+      const keyNumeric = /* @__PURE__ */ new Map();
+      for (const r of jsonResults) {
+        if (r.type === "object" && r.value) {
+          for (const [k, v] of Object.entries(r.value)) {
+            allKeys.add(k);
+            const vs = String(v ?? "");
+            if (!keySamples.has(k)) keySamples.set(k, []);
+            keySamples.get(k).push(vs);
+            if (keyNumeric.get(k) !== false) {
+              keyNumeric.set(k, isNumericString(vs));
+            }
+          }
+        }
+      }
+      columns.push({
+        name: header,
+        source: header,
+        sampleValues: nonEmpty.slice(0, 3),
+        isNumeric: false
+      });
+      for (const key of allKeys) {
+        columns.push({
+          name: `${header}.${key}`,
+          source: header,
+          jsonKey: key,
+          sampleValues: (keySamples.get(key) ?? []).slice(0, 3),
+          isNumeric: keyNumeric.get(key) ?? false
+        });
+      }
+    } else if (jsonTypes.has("array") && !jsonTypes.has("other")) {
+      const firstArr = jsonResults.find((r) => r.type === "array");
+      let arrayKeys;
+      if ((firstArr == null ? void 0 : firstArr.value) && Array.isArray(firstArr.value) && firstArr.value.length > 0) {
+        const first = firstArr.value[0];
+        if (typeof first === "object" && first !== null && !Array.isArray(first)) {
+          arrayKeys = Object.keys(first);
+        }
+      }
+      columns.push({
+        name: header,
+        source: header,
+        isJsonArray: true,
+        jsonArrayKeys: arrayKeys,
+        sampleValues: nonEmpty.slice(0, 2).map(
+          (s) => s.length > 60 ? s.slice(0, 57) + "..." : s
+        ),
+        isNumeric: false
+      });
+    } else {
+      const allNumeric = nonEmpty.length > 0 && nonEmpty.every(isNumericString);
+      columns.push({
+        name: header,
+        source: header,
+        sampleValues: nonEmpty.slice(0, 3),
+        isNumeric: allNumeric
+      });
+    }
+  }
+  return columns;
+}
+function tryParseJSON(s) {
+  const trimmed = s.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return { type: "other" };
+  }
+  try {
+    const v = JSON.parse(trimmed);
+    if (Array.isArray(v)) return { type: "array", value: v };
+    if (typeof v === "object" && v !== null) return { type: "object", value: v };
+    return { type: "other" };
+  } catch {
+    return { type: "other" };
+  }
+}
+function isNumericString(s) {
+  if (s === "") return false;
+  return !isNaN(Number(s)) && isFinite(Number(s));
+}
+function suggestDefaults(columns) {
+  const roles = /* @__PURE__ */ new Map();
+  const frameOrder = [];
+  const topLevel = columns.filter((c) => c.jsonKey === void 0);
+  let foundFrame = false;
+  for (const col of topLevel) {
+    if (!foundFrame && !col.isNumeric) {
+      roles.set(col.name, "frame");
+      frameOrder.push(col.name);
+      foundFrame = true;
+    } else if (col.isNumeric) {
+      roles.set(col.name, "metric");
+    } else {
+      roles.set(col.name, "none");
+    }
+  }
+  for (const col of columns) {
+    if (!roles.has(col.name)) {
+      roles.set(col.name, "none");
+    }
+  }
+  return { roles, frameOrder };
+}
+function serializeConfig(config) {
+  return {
+    roles: [...config.roles.entries()],
+    frameOrder: config.frameOrder,
+    jsonArrayLabelKey: [...config.jsonArrayLabelKey.entries()],
+    metricUnits: [...config.metricUnits.entries()]
+  };
+}
+function deserializeConfig(s) {
+  return {
+    roles: new Map(s.roles),
+    frameOrder: s.frameOrder,
+    jsonArrayLabelKey: new Map(s.jsonArrayLabelKey),
+    metricUnits: new Map(s.metricUnits)
+  };
+}
+const encodedJs = "KGZ1bmN0aW9uKCkgewogICJ1c2Ugc3RyaWN0IjsKICBmdW5jdGlvbiB2YXJpbnQodmFsdWUpIHsKICAgIGlmICh2YWx1ZSA+IDQyOTQ5NjcyOTUpIHJldHVybiB2YXJpbnRCaWcoQmlnSW50KHZhbHVlKSk7CiAgICBjb25zdCBvdXQgPSBbXTsKICAgIGxldCB2ID0gdmFsdWUgPj4+IDA7CiAgICBkbyB7CiAgICAgIGxldCBieXRlID0gdiAmIDEyNzsKICAgICAgdiA+Pj49IDc7CiAgICAgIGlmICh2ICE9PSAwKSBieXRlIHw9IDEyODsKICAgICAgb3V0LnB1c2goYnl0ZSk7CiAgICB9IHdoaWxlICh2ICE9PSAwKTsKICAgIHJldHVybiBuZXcgVWludDhBcnJheShvdXQpOwogIH0KICBmdW5jdGlvbiB2YXJpbnRCaWcodmFsdWUpIHsKICAgIGNvbnN0IG91dCA9IFtdOwogICAgbGV0IHYgPSB2YWx1ZSA8IDBuID8gdmFsdWUgKyAoMW4gPDwgNjRuKSA6IHZhbHVlOwogICAgZG8gewogICAgICBsZXQgYnl0ZSA9IE51bWJlcih2ICYgMHg3Rm4pOwogICAgICB2ID4+PSA3bjsKICAgICAgaWYgKHYgIT09IDBuKSBieXRlIHw9IDEyODsKICAgICAgb3V0LnB1c2goYnl0ZSk7CiAgICB9IHdoaWxlICh2ICE9PSAwbik7CiAgICBpZiAob3V0Lmxlbmd0aCA9PT0gMCkgb3V0LnB1c2goMCk7CiAgICByZXR1cm4gbmV3IFVpbnQ4QXJyYXkob3V0KTsKICB9CiAgZnVuY3Rpb24gY29uY2F0KC4uLmFycmF5cykgewogICAgbGV0IGxlbiA9IDA7CiAgICBmb3IgKGNvbnN0IGEgb2YgYXJyYXlzKSBsZW4gKz0gYS5sZW5ndGg7CiAgICBjb25zdCByZXN1bHQgPSBuZXcgVWludDhBcnJheShsZW4pOwogICAgbGV0IG9mZnNldCA9IDA7CiAgICBmb3IgKGNvbnN0IGEgb2YgYXJyYXlzKSB7CiAgICAgIHJlc3VsdC5zZXQoYSwgb2Zmc2V0KTsKICAgICAgb2Zmc2V0ICs9IGEubGVuZ3RoOwogICAgfQogICAgcmV0dXJuIHJlc3VsdDsKICB9CiAgZnVuY3Rpb24gZmllbGRWYXJpbnQoZmllbGQsIHZhbHVlKSB7CiAgICByZXR1cm4gY29uY2F0KHZhcmludChmaWVsZCA8PCAzIHwgMCksIHZhcmludCh2YWx1ZSkpOwogIH0KICBmdW5jdGlvbiBmaWVsZEJ5dGVzKGZpZWxkLCBkYXRhKSB7CiAgICByZXR1cm4gY29uY2F0KHZhcmludChmaWVsZCA8PCAzIHwgMiksIHZhcmludChkYXRhLmxlbmd0aCksIGRhdGEpOwogIH0KICBmdW5jdGlvbiBmaWVsZE1lc3NhZ2UoZmllbGQsIG1zZykgewogICAgcmV0dXJuIGZpZWxkQnl0ZXMoZmllbGQsIG1zZyk7CiAgfQogIGNvbnN0IGVuY29kZXIgPSBuZXcgVGV4dEVuY29kZXIoKTsKICBjbGFzcyBTdHJpbmdUYWJsZSB7CiAgICBjb25zdHJ1Y3RvcigpIHsKICAgICAgdGhpcy5zdHJpbmdzID0gWyIiXTsKICAgICAgdGhpcy5pbmRleCA9IC8qIEBfX1BVUkVfXyAqLyBuZXcgTWFwKFtbIiIsIDBdXSk7CiAgICB9CiAgICBpbnRlcm4ocykgewogICAgICBjb25zdCBleGlzdGluZyA9IHRoaXMuaW5kZXguZ2V0KHMpOwogICAgICBpZiAoZXhpc3RpbmcgIT09IHZvaWQgMCkgcmV0dXJuIGV4aXN0aW5nOwogICAgICBjb25zdCBpZHggPSB0aGlzLnN0cmluZ3MubGVuZ3RoOwogICAgICB0aGlzLnN0cmluZ3MucHVzaChzKTsKICAgICAgdGhpcy5pbmRleC5zZXQocywgaWR4KTsKICAgICAgcmV0dXJuIGlkeDsKICAgIH0KICAgIGVuY29kZSgpIHsKICAgICAgcmV0dXJuIGNvbmNhdCguLi50aGlzLnN0cmluZ3MubWFwKChzKSA9PiBmaWVsZEJ5dGVzKDYsIGVuY29kZXIuZW5jb2RlKHMpKSkpOwogICAgfQogIH0KICBjbGFzcyBQcHJvZkJ1aWxkZXIgewogICAgY29uc3RydWN0b3IobWV0cmljTmFtZXMsIG1ldHJpY1VuaXRzKSB7CiAgICAgIHRoaXMubWV0cmljTmFtZXMgPSBtZXRyaWNOYW1lczsKICAgICAgdGhpcy5tZXRyaWNVbml0cyA9IG1ldHJpY1VuaXRzOwogICAgICB0aGlzLnN0cmluZ3MgPSBuZXcgU3RyaW5nVGFibGUoKTsKICAgICAgdGhpcy5mdW5jdGlvbnMgPSAvKiBAX19QVVJFX18gKi8gbmV3IE1hcCgpOwogICAgICB0aGlzLmxvY2F0aW9ucyA9IC8qIEBfX1BVUkVfXyAqLyBuZXcgTWFwKCk7CiAgICAgIHRoaXMubmV4dEZ1bmNJZCA9IDE7CiAgICAgIHRoaXMubmV4dExvY0lkID0gMTsKICAgICAgdGhpcy5zYW1wbGVzID0gW107CiAgICAgIHRoaXMuZnVuY3Rpb25Qcm90b3MgPSBbXTsKICAgICAgdGhpcy5sb2NhdGlvblByb3RvcyA9IFtdOwogICAgfQogICAgZ2V0RnVuY3Rpb25JZChuYW1lKSB7CiAgICAgIGNvbnN0IGV4aXN0aW5nID0gdGhpcy5mdW5jdGlvbnMuZ2V0KG5hbWUpOwogICAgICBpZiAoZXhpc3RpbmcgIT09IHZvaWQgMCkgcmV0dXJuIGV4aXN0aW5nOwogICAgICBjb25zdCBmaWQgPSB0aGlzLm5leHRGdW5jSWQrKzsKICAgICAgdGhpcy5mdW5jdGlvbnMuc2V0KG5hbWUsIGZpZCk7CiAgICAgIGNvbnN0IG5hbWVJZHggPSB0aGlzLnN0cmluZ3MuaW50ZXJuKG5hbWUpOwogICAgICB0aGlzLmZ1bmN0aW9uUHJvdG9zLnB1c2goZmllbGRNZXNzYWdlKDUsIGNvbmNhdCgKICAgICAgICBmaWVsZFZhcmludCgxLCBmaWQpLAogICAgICAgIGZpZWxkVmFyaW50KDIsIG5hbWVJZHgpLAogICAgICAgIGZpZWxkVmFyaW50KDMsIG5hbWVJZHgpCiAgICAgICkpKTsKICAgICAgcmV0dXJuIGZpZDsKICAgIH0KICAgIGdldExvY2F0aW9uSWQoZnVuY0lkKSB7CiAgICAgIGNvbnN0IGV4aXN0aW5nID0gdGhpcy5sb2NhdGlvbnMuZ2V0KGZ1bmNJZCk7CiAgICAgIGlmIChleGlzdGluZyAhPT0gdm9pZCAwKSByZXR1cm4gZXhpc3Rpbmc7CiAgICAgIGNvbnN0IGxpZCA9IHRoaXMubmV4dExvY0lkKys7CiAgICAgIHRoaXMubG9jYXRpb25zLnNldChmdW5jSWQsIGxpZCk7CiAgICAgIHRoaXMubG9jYXRpb25Qcm90b3MucHVzaChmaWVsZE1lc3NhZ2UoNCwgY29uY2F0KAogICAgICAgIGZpZWxkVmFyaW50KDEsIGxpZCksCiAgICAgICAgZmllbGRNZXNzYWdlKDQsIGZpZWxkVmFyaW50KDEsIGZ1bmNJZCkpCiAgICAgICkpKTsKICAgICAgcmV0dXJuIGxpZDsKICAgIH0KICAgIGFkZFNhbXBsZShzdGFjaywgdmFsdWVzLCBsYWJlbHMpIHsKICAgICAgY29uc3QgcGFydHMgPSBbXTsKICAgICAgZm9yIChsZXQgaSA9IHN0YWNrLmxlbmd0aCAtIDE7IGkgPj0gMDsgaS0tKSB7CiAgICAgICAgY29uc3QgZmlkID0gdGhpcy5nZXRGdW5jdGlvbklkKHN0YWNrW2ldKTsKICAgICAgICBwYXJ0cy5wdXNoKGZpZWxkVmFyaW50KDEsIHRoaXMuZ2V0TG9jYXRpb25JZChmaWQpKSk7CiAgICAgIH0KICAgICAgZm9yIChjb25zdCB2IG9mIHZhbHVlcykgewogICAgICAgIHBhcnRzLnB1c2goZmllbGRWYXJpbnQoMiwgTWF0aC5tYXgoMCwgdikpKTsKICAgICAgfQogICAgICBmb3IgKGNvbnN0IGxibCBvZiBsYWJlbHMpIHsKICAgICAgICBjb25zdCBrZXlJZHggPSB0aGlzLnN0cmluZ3MuaW50ZXJuKGxibC5rZXkpOwogICAgICAgIGxldCBsYWJlbEJ5dGVzOwogICAgICAgIGlmIChsYmwuaXNOdW1lcmljKSB7CiAgICAgICAgICBjb25zdCBuID0gTnVtYmVyKGxibC52YWx1ZSk7CiAgICAgICAgICBjb25zdCBudW1WYWwgPSBpc05hTihuKSA/IDAgOiBNYXRoLnJvdW5kKG4pOwogICAgICAgICAgbGFiZWxCeXRlcyA9IGNvbmNhdCgKICAgICAgICAgICAgZmllbGRWYXJpbnQoMSwga2V5SWR4KSwKICAgICAgICAgICAgLy8gTGFiZWwua2V5CiAgICAgICAgICAgIGZpZWxkVmFyaW50KDMsIG51bVZhbCkKICAgICAgICAgICAgLy8gTGFiZWwubnVtCiAgICAgICAgICApOwogICAgICAgIH0gZWxzZSB7CiAgICAgICAgICBjb25zdCBzdHJJZHggPSB0aGlzLnN0cmluZ3MuaW50ZXJuKGxibC52YWx1ZSk7CiAgICAgICAgICBsYWJlbEJ5dGVzID0gY29uY2F0KAogICAgICAgICAgICBmaWVsZFZhcmludCgxLCBrZXlJZHgpLAogICAgICAgICAgICAvLyBMYWJlbC5rZXkKICAgICAgICAgICAgZmllbGRWYXJpbnQoMiwgc3RySWR4KQogICAgICAgICAgICAvLyBMYWJlbC5zdHIKICAgICAgICAgICk7CiAgICAgICAgfQogICAgICAgIHBhcnRzLnB1c2goZmllbGRNZXNzYWdlKDMsIGxhYmVsQnl0ZXMpKTsKICAgICAgfQogICAgICB0aGlzLnNhbXBsZXMucHVzaChmaWVsZE1lc3NhZ2UoMiwgY29uY2F0KC4uLnBhcnRzKSkpOwogICAgfQogICAgZW5jb2RlKCkgewogICAgICBjb25zdCBwYXJ0cyA9IFtdOwogICAgICBmb3IgKGxldCBpID0gMDsgaSA8IHRoaXMubWV0cmljTmFtZXMubGVuZ3RoOyBpKyspIHsKICAgICAgICBjb25zdCB0eXBlSWR4ID0gdGhpcy5zdHJpbmdzLmludGVybih0aGlzLm1ldHJpY05hbWVzW2ldKTsKICAgICAgICBjb25zdCB1bml0SWR4ID0gdGhpcy5zdHJpbmdzLmludGVybih0aGlzLm1ldHJpY1VuaXRzW2ldKTsKICAgICAgICBwYXJ0cy5wdXNoKGZpZWxkTWVzc2FnZSgxLCBjb25jYXQoZmllbGRWYXJpbnQoMSwgdHlwZUlkeCksIGZpZWxkVmFyaW50KDIsIHVuaXRJZHgpKSkpOwogICAgICB9CiAgICAgIGZvciAoY29uc3QgcyBvZiB0aGlzLnNhbXBsZXMpIHBhcnRzLnB1c2gocyk7CiAgICAgIGZvciAoY29uc3QgbCBvZiB0aGlzLmxvY2F0aW9uUHJvdG9zKSBwYXJ0cy5wdXNoKGwpOwogICAgICBmb3IgKGNvbnN0IGYgb2YgdGhpcy5mdW5jdGlvblByb3RvcykgcGFydHMucHVzaChmKTsKICAgICAgcGFydHMucHVzaCh0aGlzLnN0cmluZ3MuZW5jb2RlKCkpOwogICAgICBpZiAodGhpcy5tZXRyaWNOYW1lcy5sZW5ndGggPiAwKSB7CiAgICAgICAgcGFydHMucHVzaChmaWVsZFZhcmludCgxNSwgdGhpcy5zdHJpbmdzLmludGVybih0aGlzLm1ldHJpY05hbWVzWzBdKSkpOwogICAgICB9CiAgICAgIHJldHVybiBjb25jYXQoLi4ucGFydHMpOwogICAgfQogIH0KICBmdW5jdGlvbiByZXNvbHZlU3RyaW5nVmFsdWUocm93LCBjb2wpIHsKICAgIGlmIChjb2wuanNvbktleSAhPT0gdm9pZCAwKSB7CiAgICAgIGNvbnN0IHJhdyA9IHJvd1tjb2wuc291cmNlXSA/PyAiIjsKICAgICAgdHJ5IHsKICAgICAgICBjb25zdCBvYmogPSBKU09OLnBhcnNlKHJhdy50cmltKCkpOwogICAgICAgIHJldHVybiBTdHJpbmcob2JqW2NvbC5qc29uS2V5XSA/PyAiIik7CiAgICAgIH0gY2F0Y2ggewogICAgICAgIHJldHVybiAiIjsKICAgICAgfQogICAgfQogICAgcmV0dXJuIHJvd1tjb2wubmFtZV0gPz8gIiI7CiAgfQogIGZ1bmN0aW9uIHJlc29sdmVOdW1lcmljVmFsdWUocm93LCBjb2wpIHsKICAgIGNvbnN0IHMgPSByZXNvbHZlU3RyaW5nVmFsdWUocm93LCBjb2wpIHx8ICIwIjsKICAgIGNvbnN0IG4gPSBOdW1iZXIocyk7CiAgICByZXR1cm4gaXNOYU4obikgPyAwIDogTWF0aC5tYXgoMCwgTWF0aC5yb3VuZChuKSk7CiAgfQogIGZ1bmN0aW9uIGJ1aWxkU3RhY2socm93LCBmcmFtZU9yZGVyLCBjb2x1bW5zLCBqc29uQXJyYXlMYWJlbEtleSkgewogICAgY29uc3Qgc3RhY2sgPSBbXTsKICAgIGZvciAoY29uc3QgZnJhbWVOYW1lIG9mIGZyYW1lT3JkZXIpIHsKICAgICAgY29uc3QgY29sID0gY29sdW1ucy5maW5kKChjKSA9PiBjLm5hbWUgPT09IGZyYW1lTmFtZSk7CiAgICAgIGlmICghY29sKSBjb250aW51ZTsKICAgICAgaWYgKGNvbC5pc0pzb25BcnJheSkgewogICAgICAgIGNvbnN0IHJhdyA9IHJvd1tjb2wuc291cmNlXSA/PyAiIjsKICAgICAgICB0cnkgewogICAgICAgICAgY29uc3QgYXJyID0gSlNPTi5wYXJzZShyYXcudHJpbSgpKTsKICAgICAgICAgIGlmIChBcnJheS5pc0FycmF5KGFycikpIHsKICAgICAgICAgICAgY29uc3QgbGFiZWxLZXkgPSBqc29uQXJyYXlMYWJlbEtleS5nZXQoY29sLm5hbWUpOwogICAgICAgICAgICBmb3IgKGNvbnN0IGVsZW0gb2YgYXJyKSB7CiAgICAgICAgICAgICAgaWYgKHR5cGVvZiBlbGVtID09PSAib2JqZWN0IiAmJiBlbGVtICE9PSBudWxsICYmIGxhYmVsS2V5KSB7CiAgICAgICAgICAgICAgICBzdGFjay5wdXNoKFN0cmluZyhlbGVtW2xhYmVsS2V5XSA/PyAiKHVua25vd24pIikpOwogICAgICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgICAgICBzdGFjay5wdXNoKFN0cmluZyhlbGVtID8/ICIobnVsbCkiKSk7CiAgICAgICAgICAgICAgfQogICAgICAgICAgICB9CiAgICAgICAgICB9CiAgICAgICAgfSBjYXRjaCB7CiAgICAgICAgICBzdGFjay5wdXNoKHJhdyB8fCAiKHBhcnNlIGVycm9yKSIpOwogICAgICAgIH0KICAgICAgfSBlbHNlIHsKICAgICAgICBjb25zdCB2YWwgPSByZXNvbHZlU3RyaW5nVmFsdWUocm93LCBjb2wpOwogICAgICAgIHN0YWNrLnB1c2godmFsIHx8ICIoZW1wdHkpIik7CiAgICAgIH0KICAgIH0KICAgIHJldHVybiBzdGFjay5sZW5ndGggPiAwID8gc3RhY2sgOiBbIihubyBmcmFtZXMpIl07CiAgfQogIGZ1bmN0aW9uIGdldE1ldHJpY1ZhbHVlKHJvdywgbWV0cmljTmFtZSwgY29sdW1ucykgewogICAgY29uc3QgY29sID0gY29sdW1ucy5maW5kKChjKSA9PiBjLm5hbWUgPT09IG1ldHJpY05hbWUpOwogICAgaWYgKCFjb2wpIHJldHVybiAwOwogICAgcmV0dXJuIHJlc29sdmVOdW1lcmljVmFsdWUocm93LCBjb2wpOwogIH0KICBmdW5jdGlvbiBidWlsZExhYmVscyhyb3csIGxhYmVsQ29sdW1ucykgewogICAgcmV0dXJuIGxhYmVsQ29sdW1ucy5tYXAoKGNvbCkgPT4gewogICAgICBjb25zdCB2YWx1ZSA9IHJlc29sdmVTdHJpbmdWYWx1ZShyb3csIGNvbCk7CiAgICAgIHJldHVybiB7IGtleTogY29sLm5hbWUsIHZhbHVlLCBpc051bWVyaWM6IGNvbC5pc051bWVyaWMgfTsKICAgIH0pOwogIH0KICBmdW5jdGlvbiBnZXRQYXJ0aXRpb25LZXkocm93LCBwYXJ0aXRpb25Db2x1bW5zLCBjb2x1bW5zKSB7CiAgICBpZiAocGFydGl0aW9uQ29sdW1ucy5sZW5ndGggPT09IDApIHJldHVybiAiIjsKICAgIHJldHVybiBwYXJ0aXRpb25Db2x1bW5zLm1hcCgobmFtZSkgPT4gewogICAgICBjb25zdCBjb2wgPSBjb2x1bW5zLmZpbmQoKGMpID0+IGMubmFtZSA9PT0gbmFtZSk7CiAgICAgIGNvbnN0IHZhbCA9IGNvbCA/IHJlc29sdmVTdHJpbmdWYWx1ZShyb3csIGNvbCkgOiAiIjsKICAgICAgcmV0dXJuIGAke25hbWV9PSR7dmFsfWA7CiAgICB9KS5qb2luKCJ8Iik7CiAgfQogIGZ1bmN0aW9uIHBhcnNlUGFydGl0aW9uS2V5KHBhcnRLZXkpIHsKICAgIGlmIChwYXJ0S2V5ID09PSAiIikgcmV0dXJuIHt9OwogICAgY29uc3QgcmVzdWx0ID0ge307CiAgICBmb3IgKGNvbnN0IHBhcnQgb2YgcGFydEtleS5zcGxpdCgifCIpKSB7CiAgICAgIGNvbnN0IGVxID0gcGFydC5pbmRleE9mKCI9Iik7CiAgICAgIGlmIChlcSA+PSAwKSByZXN1bHRbcGFydC5zbGljZSgwLCBlcSldID0gcGFydC5zbGljZShlcSArIDEpOwogICAgfQogICAgcmV0dXJuIHJlc3VsdDsKICB9CiAgZnVuY3Rpb24gdGltZXN0YW1wKCkgewogICAgY29uc3QgZCA9IC8qIEBfX1BVUkVfXyAqLyBuZXcgRGF0ZSgpOwogICAgY29uc3QgcGFkID0gKG4pID0+IFN0cmluZyhuKS5wYWRTdGFydCgyLCAiMCIpOwogICAgcmV0dXJuIGAke2QuZ2V0RnVsbFllYXIoKX0ke3BhZChkLmdldE1vbnRoKCkgKyAxKX0ke3BhZChkLmdldERhdGUoKSl9XyR7cGFkKGQuZ2V0SG91cnMoKSl9JHtwYWQoZC5nZXRNaW51dGVzKCkpfSR7cGFkKGQuZ2V0U2Vjb25kcygpKX1gOwogIH0KICBhc3luYyBmdW5jdGlvbiBnemlwQ29tcHJlc3MoZGF0YSkgewogICAgY29uc3Qgc3RyZWFtID0gbmV3IEJsb2IoW2RhdGFdKS5zdHJlYW0oKS5waXBlVGhyb3VnaChuZXcgQ29tcHJlc3Npb25TdHJlYW0oImd6aXAiKSk7CiAgICBjb25zdCByZWFkZXIgPSBzdHJlYW0uZ2V0UmVhZGVyKCk7CiAgICBjb25zdCBjaHVua3MgPSBbXTsKICAgIGZvciAoOyA7ICkgewogICAgICBjb25zdCB7IGRvbmUsIHZhbHVlIH0gPSBhd2FpdCByZWFkZXIucmVhZCgpOwogICAgICBpZiAoZG9uZSkgYnJlYWs7CiAgICAgIGlmICh2YWx1ZSkgY2h1bmtzLnB1c2godmFsdWUpOwogICAgfQogICAgcmV0dXJuIGNvbmNhdCguLi5jaHVua3MpOwogIH0KICBhc3luYyBmdW5jdGlvbiBnZW5lcmF0ZVByb2ZpbGVzKGRhdGEsIGNvbHVtbnMsIGNvbmZpZykgewogICAgaWYgKGNvbmZpZy5mcmFtZU9yZGVyLmxlbmd0aCA9PT0gMCkgewogICAgICB0aHJvdyBuZXcgRXJyb3IoIkF0IGxlYXN0IG9uZSBmcmFtZSBjb2x1bW4gbXVzdCBiZSBzZWxlY3RlZCIpOwogICAgfQogICAgY29uc3QgbWV0cmljQ29sdW1ucyA9IFsuLi5jb25maWcucm9sZXMuZW50cmllcygpXS5maWx0ZXIoKFssIHJvbGVdKSA9PiByb2xlID09PSAibWV0cmljIikubWFwKChbbmFtZV0pID0+IG5hbWUpOwogICAgY29uc3QgbGFiZWxDb2x1bW5OYW1lcyA9IFsuLi5jb25maWcucm9sZXMuZW50cmllcygpXS5maWx0ZXIoKFssIHJvbGVdKSA9PiByb2xlID09PSAibGFiZWwiKS5tYXAoKFtuYW1lXSkgPT4gbmFtZSk7CiAgICBjb25zdCBsYWJlbENvbHVtbkluZm9zID0gbGFiZWxDb2x1bW5OYW1lcy5tYXAoKG5hbWUpID0+IGNvbHVtbnMuZmluZCgoYykgPT4gYy5uYW1lID09PSBuYW1lKSkuZmlsdGVyKChjKSA9PiBjICE9PSB2b2lkIDApOwogICAgY29uc3QgcGFydGl0aW9uQ29sdW1ucyA9IFsuLi5jb25maWcucm9sZXMuZW50cmllcygpXS5maWx0ZXIoKFssIHJvbGVdKSA9PiByb2xlID09PSAicGFydGl0aW9uIikubWFwKChbbmFtZV0pID0+IG5hbWUpOwogICAgY29uc3QgYWxsTWV0cmljTmFtZXMgPSBbLi4ubWV0cmljQ29sdW1ucywgInJvd3MiXTsKICAgIGNvbnN0IGFsbE1ldHJpY1VuaXRzID0gWwogICAgICAuLi5tZXRyaWNDb2x1bW5zLm1hcCgobikgPT4gY29uZmlnLm1ldHJpY1VuaXRzLmdldChuKSA/PyAiY291bnQiKSwKICAgICAgImNvdW50IgogICAgXTsKICAgIGNvbnN0IHBhcnRpdGlvbnMgPSAvKiBAX19QVVJFX18gKi8gbmV3IE1hcCgpOwogICAgZm9yIChjb25zdCByb3cgb2YgZGF0YS5yb3dzKSB7CiAgICAgIGNvbnN0IGtleSA9IGdldFBhcnRpdGlvbktleShyb3csIHBhcnRpdGlvbkNvbHVtbnMsIGNvbHVtbnMpOwogICAgICBsZXQgYnVja2V0ID0gcGFydGl0aW9ucy5nZXQoa2V5KTsKICAgICAgaWYgKCFidWNrZXQpIHsKICAgICAgICBidWNrZXQgPSBbXTsKICAgICAgICBwYXJ0aXRpb25zLnNldChrZXksIGJ1Y2tldCk7CiAgICAgIH0KICAgICAgYnVja2V0LnB1c2gocm93KTsKICAgIH0KICAgIGNvbnN0IHRzID0gdGltZXN0YW1wKCk7CiAgICBjb25zdCBwcm9maWxlcyA9IFtdOwogICAgZm9yIChjb25zdCBbcGFydEtleSwgcm93c10gb2YgcGFydGl0aW9ucykgewogICAgICBjb25zdCBidWlsZGVyID0gbmV3IFBwcm9mQnVpbGRlcihhbGxNZXRyaWNOYW1lcywgYWxsTWV0cmljVW5pdHMpOwogICAgICBjb25zdCBoYXNMYWJlbHMgPSBsYWJlbENvbHVtbkluZm9zLmxlbmd0aCA+IDA7CiAgICAgIGlmIChoYXNMYWJlbHMpIHsKICAgICAgICBmb3IgKGNvbnN0IHJvdyBvZiByb3dzKSB7CiAgICAgICAgICBjb25zdCBzdGFjayA9IGJ1aWxkU3RhY2socm93LCBjb25maWcuZnJhbWVPcmRlciwgY29sdW1ucywgY29uZmlnLmpzb25BcnJheUxhYmVsS2V5KTsKICAgICAgICAgIGNvbnN0IHZhbHVlcyA9IG1ldHJpY0NvbHVtbnMubWFwKChuYW1lMikgPT4gZ2V0TWV0cmljVmFsdWUocm93LCBuYW1lMiwgY29sdW1ucykpOwogICAgICAgICAgdmFsdWVzLnB1c2goMSk7CiAgICAgICAgICBjb25zdCBsYWJlbHMgPSBidWlsZExhYmVscyhyb3csIGxhYmVsQ29sdW1uSW5mb3MpOwogICAgICAgICAgYnVpbGRlci5hZGRTYW1wbGUoc3RhY2ssIHZhbHVlcywgbGFiZWxzKTsKICAgICAgICB9CiAgICAgIH0gZWxzZSB7CiAgICAgICAgY29uc3Qgc3RhY2tzID0gLyogQF9fUFVSRV9fICovIG5ldyBNYXAoKTsKICAgICAgICBmb3IgKGNvbnN0IHJvdyBvZiByb3dzKSB7CiAgICAgICAgICBjb25zdCBzdGFjayA9IGJ1aWxkU3RhY2socm93LCBjb25maWcuZnJhbWVPcmRlciwgY29sdW1ucywgY29uZmlnLmpzb25BcnJheUxhYmVsS2V5KTsKICAgICAgICAgIGNvbnN0IHN0YWNrS2V5ID0gc3RhY2suam9pbigiXDAiKTsKICAgICAgICAgIGNvbnN0IHZhbHVlcyA9IG1ldHJpY0NvbHVtbnMubWFwKChuYW1lMikgPT4gZ2V0TWV0cmljVmFsdWUocm93LCBuYW1lMiwgY29sdW1ucykpOwogICAgICAgICAgdmFsdWVzLnB1c2goMSk7CiAgICAgICAgICBjb25zdCBleGlzdGluZyA9IHN0YWNrcy5nZXQoc3RhY2tLZXkpOwogICAgICAgICAgaWYgKGV4aXN0aW5nKSB7CiAgICAgICAgICAgIGZvciAobGV0IGkgPSAwOyBpIDwgdmFsdWVzLmxlbmd0aDsgaSsrKSBleGlzdGluZy52YWx1ZXNbaV0gKz0gdmFsdWVzW2ldOwogICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgc3RhY2tzLnNldChzdGFja0tleSwgeyBzdGFjaywgdmFsdWVzIH0pOwogICAgICAgICAgfQogICAgICAgIH0KICAgICAgICBmb3IgKGNvbnN0IHsgc3RhY2ssIHZhbHVlcyB9IG9mIHN0YWNrcy52YWx1ZXMoKSkgewogICAgICAgICAgYnVpbGRlci5hZGRTYW1wbGUoc3RhY2ssIHZhbHVlcywgW10pOwogICAgICAgIH0KICAgICAgfQogICAgICBjb25zdCBjb21wcmVzc2VkID0gYXdhaXQgZ3ppcENvbXByZXNzKGJ1aWxkZXIuZW5jb2RlKCkpOwogICAgICBjb25zdCBwYXJ0VmFsdWVzID0gcGFyc2VQYXJ0aXRpb25LZXkocGFydEtleSk7CiAgICAgIGNvbnN0IGRpc3BsYXlQYXJ0cyA9IE9iamVjdC52YWx1ZXMocGFydFZhbHVlcyk7CiAgICAgIGxldCBuYW1lOwogICAgICBsZXQgZmlsZU5hbWU7CiAgICAgIGlmIChwYXJ0S2V5ID09PSAiIikgewogICAgICAgIG5hbWUgPSAicHJvZmlsZSI7CiAgICAgICAgZmlsZU5hbWUgPSBgcHJvZmlsZV8ke3RzfS5wYi5nemA7CiAgICAgIH0gZWxzZSB7CiAgICAgICAgbmFtZSA9IGRpc3BsYXlQYXJ0cy5qb2luKCIgLyAiKTsKICAgICAgICBjb25zdCBzYWZlTmFtZSA9IGRpc3BsYXlQYXJ0cy5tYXAoKHApID0+IHAucmVwbGFjZSgvW15hLXpBLVowLTkuXy1dL2csICJfIikuc2xpY2UoMCwgNDApKS5qb2luKCJfIik7CiAgICAgICAgZmlsZU5hbWUgPSBgcHJvZmlsZV8ke3NhZmVOYW1lfV8ke3RzfS5wYi5nemA7CiAgICAgIH0KICAgICAgcHJvZmlsZXMucHVzaCh7CiAgICAgICAgbmFtZSwKICAgICAgICBmaWxlTmFtZSwKICAgICAgICBkYXRhOiBjb21wcmVzc2VkLAogICAgICAgIHNhbXBsZUNvdW50OiBoYXNMYWJlbHMgPyByb3dzLmxlbmd0aCA6IG5ldyBTZXQoCiAgICAgICAgICByb3dzLm1hcCgocm93KSA9PiBidWlsZFN0YWNrKHJvdywgY29uZmlnLmZyYW1lT3JkZXIsIGNvbHVtbnMsIGNvbmZpZy5qc29uQXJyYXlMYWJlbEtleSkuam9pbigiXDAiKSkKICAgICAgICApLnNpemUsCiAgICAgICAgcm93Q291bnQ6IHJvd3MubGVuZ3RoLAogICAgICAgIHBhcnRpdGlvblZhbHVlczogcGFydFZhbHVlcwogICAgICB9KTsKICAgIH0KICAgIHByb2ZpbGVzLnNvcnQoKGEsIGIpID0+IGEubmFtZS5sb2NhbGVDb21wYXJlKGIubmFtZSkpOwogICAgcmV0dXJuIHByb2ZpbGVzOwogIH0KICBmdW5jdGlvbiBkZXNlcmlhbGl6ZUNvbmZpZyhzKSB7CiAgICByZXR1cm4gewogICAgICByb2xlczogbmV3IE1hcChzLnJvbGVzKSwKICAgICAgZnJhbWVPcmRlcjogcy5mcmFtZU9yZGVyLAogICAgICBqc29uQXJyYXlMYWJlbEtleTogbmV3IE1hcChzLmpzb25BcnJheUxhYmVsS2V5KSwKICAgICAgbWV0cmljVW5pdHM6IG5ldyBNYXAocy5tZXRyaWNVbml0cykKICAgIH07CiAgfQogIGNvbnN0IGN0eCA9IGdsb2JhbFRoaXM7CiAgZnVuY3Rpb24gcHJvZ3Jlc3MobWVzc2FnZSwgcGN0KSB7CiAgICBjdHgucG9zdE1lc3NhZ2UoeyB0eXBlOiAicHJvZ3Jlc3MiLCBtZXNzYWdlLCBwY3QgfSk7CiAgfQogIGFzeW5jIGZ1bmN0aW9uIGhhbmRsZUdlbmVyYXRlKHJlcSkgewogICAgcHJvZ3Jlc3MoIkJ1aWxkaW5nIHByb2ZpbGVz4oCmIiwgMTApOwogICAgY29uc3QgY29uZmlnID0gZGVzZXJpYWxpemVDb25maWcocmVxLmNvbmZpZyk7CiAgICBwcm9ncmVzcygiUHJvY2Vzc2luZyByb3dz4oCmIiwgMzApOwogICAgY29uc3QgcHJvZmlsZXMgPSBhd2FpdCBnZW5lcmF0ZVByb2ZpbGVzKHJlcS5kYXRhLCByZXEuY29sdW1ucywgY29uZmlnKTsKICAgIHByb2dyZXNzKCJGaW5hbGl6aW5n4oCmIiwgOTApOwogICAgY29uc3QgcmVzdWx0cyA9IHByb2ZpbGVzLm1hcCgocCkgPT4gewogICAgICBjb25zdCBidWYgPSBwLmRhdGEuYnVmZmVyIGluc3RhbmNlb2YgQXJyYXlCdWZmZXIgPyBwLmRhdGEuYnVmZmVyIDogcC5kYXRhLnNsaWNlKCkuYnVmZmVyOwogICAgICByZXR1cm4gewogICAgICAgIG5hbWU6IHAubmFtZSwKICAgICAgICBmaWxlTmFtZTogcC5maWxlTmFtZSwKICAgICAgICBkYXRhOiBidWYsCiAgICAgICAgc2FtcGxlQ291bnQ6IHAuc2FtcGxlQ291bnQsCiAgICAgICAgcm93Q291bnQ6IHAucm93Q291bnQsCiAgICAgICAgcGFydGl0aW9uVmFsdWVzOiBwLnBhcnRpdGlvblZhbHVlcwogICAgICB9OwogICAgfSk7CiAgICBwcm9ncmVzcygiRG9uZSIsIDEwMCk7CiAgICBjb25zdCBtc2cgPSB7IHR5cGU6ICJyZXN1bHQiLCBwcm9maWxlczogcmVzdWx0cyB9OwogICAgY3R4LnBvc3RNZXNzYWdlKG1zZywgcmVzdWx0cy5tYXAoKHIpID0+IHIuZGF0YSkpOwogIH0KICBjdHgub25tZXNzYWdlID0gYXN5bmMgKGUpID0+IHsKICAgIHRyeSB7CiAgICAgIGlmIChlLmRhdGEudHlwZSA9PT0gImdlbmVyYXRlIikgYXdhaXQgaGFuZGxlR2VuZXJhdGUoZS5kYXRhKTsKICAgIH0gY2F0Y2ggKGVycikgewogICAgICBjb25zdCBtc2cgPSB7CiAgICAgICAgdHlwZTogImVycm9yIiwKICAgICAgICBtZXNzYWdlOiBlcnIgaW5zdGFuY2VvZiBFcnJvciA/IGVyci5tZXNzYWdlIDogU3RyaW5nKGVycikKICAgICAgfTsKICAgICAgY3R4LnBvc3RNZXNzYWdlKG1zZyk7CiAgICB9CiAgfTsKfSkoKTsK";
+const decodeBase64 = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+const blob = typeof self !== "undefined" && self.Blob && new Blob([decodeBase64(encodedJs)], { type: "text/javascript;charset=utf-8" });
+function WorkerWrapper(options) {
+  let objURL;
+  try {
+    objURL = blob && (self.URL || self.webkitURL).createObjectURL(blob);
+    if (!objURL) throw "";
+    const worker = new Worker(objURL, {
+      name: options == null ? void 0 : options.name
+    });
+    worker.addEventListener("error", () => {
+      (self.URL || self.webkitURL).revokeObjectURL(objURL);
+    });
+    return worker;
+  } catch (e) {
+    return new Worker(
+      "data:text/javascript;base64," + encodedJs,
+      {
+        name: options == null ? void 0 : options.name
+      }
+    );
+  } finally {
+    objURL && (self.URL || self.webkitURL).revokeObjectURL(objURL);
+  }
+}
+function varint(value) {
+  if (value > 4294967295) return varintBig(BigInt(value));
+  const out = [];
+  let v = value >>> 0;
+  do {
+    let byte = v & 127;
+    v >>>= 7;
+    if (v !== 0) byte |= 128;
+    out.push(byte);
+  } while (v !== 0);
+  return new Uint8Array(out);
+}
+function varintBig(value) {
+  const out = [];
+  let v = value < 0n ? value + (1n << 64n) : value;
+  do {
+    let byte = Number(v & 0x7Fn);
+    v >>= 7n;
+    if (v !== 0n) byte |= 128;
+    out.push(byte);
+  } while (v !== 0n);
+  if (out.length === 0) out.push(0);
+  return new Uint8Array(out);
+}
+function concat(...arrays) {
+  let len = 0;
+  for (const a of arrays) len += a.length;
+  const result = new Uint8Array(len);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.length;
+  }
+  return result;
+}
+function fieldVarint(field, value) {
+  return concat(varint(field << 3 | 0), varint(value));
+}
+function fieldBytes(field, data) {
+  return concat(varint(field << 3 | 2), varint(data.length), data);
+}
+function fieldMessage(field, msg) {
+  return fieldBytes(field, msg);
+}
+const encoder = new TextEncoder();
+class StringTable {
+  constructor() {
+    this.strings = [""];
+    this.index = /* @__PURE__ */ new Map([["", 0]]);
+  }
+  intern(s) {
+    const existing = this.index.get(s);
+    if (existing !== void 0) return existing;
+    const idx = this.strings.length;
+    this.strings.push(s);
+    this.index.set(s, idx);
+    return idx;
+  }
+  encode() {
+    return concat(...this.strings.map((s) => fieldBytes(6, encoder.encode(s))));
+  }
+}
+class PprofBuilder {
+  constructor(metricNames, metricUnits) {
+    this.metricNames = metricNames;
+    this.metricUnits = metricUnits;
+    this.strings = new StringTable();
+    this.functions = /* @__PURE__ */ new Map();
+    this.locations = /* @__PURE__ */ new Map();
+    this.nextFuncId = 1;
+    this.nextLocId = 1;
+    this.samples = [];
+    this.functionProtos = [];
+    this.locationProtos = [];
+  }
+  getFunctionId(name) {
+    const existing = this.functions.get(name);
+    if (existing !== void 0) return existing;
+    const fid = this.nextFuncId++;
+    this.functions.set(name, fid);
+    const nameIdx = this.strings.intern(name);
+    this.functionProtos.push(fieldMessage(5, concat(
+      fieldVarint(1, fid),
+      fieldVarint(2, nameIdx),
+      fieldVarint(3, nameIdx)
+    )));
+    return fid;
+  }
+  getLocationId(funcId) {
+    const existing = this.locations.get(funcId);
+    if (existing !== void 0) return existing;
+    const lid = this.nextLocId++;
+    this.locations.set(funcId, lid);
+    this.locationProtos.push(fieldMessage(4, concat(
+      fieldVarint(1, lid),
+      fieldMessage(4, fieldVarint(1, funcId))
+    )));
+    return lid;
+  }
+  addSample(stack, values, labels) {
+    const parts = [];
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const fid = this.getFunctionId(stack[i]);
+      parts.push(fieldVarint(1, this.getLocationId(fid)));
+    }
+    for (const v of values) {
+      parts.push(fieldVarint(2, Math.max(0, v)));
+    }
+    for (const lbl of labels) {
+      const keyIdx = this.strings.intern(lbl.key);
+      let labelBytes;
+      if (lbl.isNumeric) {
+        const n = Number(lbl.value);
+        const numVal = isNaN(n) ? 0 : Math.round(n);
+        labelBytes = concat(
+          fieldVarint(1, keyIdx),
+          // Label.key
+          fieldVarint(3, numVal)
+          // Label.num
+        );
+      } else {
+        const strIdx = this.strings.intern(lbl.value);
+        labelBytes = concat(
+          fieldVarint(1, keyIdx),
+          // Label.key
+          fieldVarint(2, strIdx)
+          // Label.str
+        );
+      }
+      parts.push(fieldMessage(3, labelBytes));
+    }
+    this.samples.push(fieldMessage(2, concat(...parts)));
+  }
+  encode() {
+    const parts = [];
+    for (let i = 0; i < this.metricNames.length; i++) {
+      const typeIdx = this.strings.intern(this.metricNames[i]);
+      const unitIdx = this.strings.intern(this.metricUnits[i]);
+      parts.push(fieldMessage(1, concat(fieldVarint(1, typeIdx), fieldVarint(2, unitIdx))));
+    }
+    for (const s of this.samples) parts.push(s);
+    for (const l of this.locationProtos) parts.push(l);
+    for (const f of this.functionProtos) parts.push(f);
+    parts.push(this.strings.encode());
+    if (this.metricNames.length > 0) {
+      parts.push(fieldVarint(15, this.strings.intern(this.metricNames[0])));
+    }
+    return concat(...parts);
+  }
+}
+function resolveStringValue(row, col) {
+  if (col.jsonKey !== void 0) {
+    const raw = row[col.source] ?? "";
+    try {
+      const obj = JSON.parse(raw.trim());
+      return String(obj[col.jsonKey] ?? "");
+    } catch {
+      return "";
+    }
+  }
+  return row[col.name] ?? "";
+}
+function resolveNumericValue(row, col) {
+  const s = resolveStringValue(row, col) || "0";
+  const n = Number(s);
+  return isNaN(n) ? 0 : Math.max(0, Math.round(n));
+}
+function buildStack(row, frameOrder, columns, jsonArrayLabelKey) {
+  const stack = [];
+  for (const frameName of frameOrder) {
+    const col = columns.find((c) => c.name === frameName);
+    if (!col) continue;
+    if (col.isJsonArray) {
+      const raw = row[col.source] ?? "";
+      try {
+        const arr = JSON.parse(raw.trim());
+        if (Array.isArray(arr)) {
+          const labelKey = jsonArrayLabelKey.get(col.name);
+          for (const elem of arr) {
+            if (typeof elem === "object" && elem !== null && labelKey) {
+              stack.push(String(elem[labelKey] ?? "(unknown)"));
+            } else {
+              stack.push(String(elem ?? "(null)"));
+            }
+          }
+        }
+      } catch {
+        stack.push(raw || "(parse error)");
+      }
+    } else {
+      const val = resolveStringValue(row, col);
+      stack.push(val || "(empty)");
+    }
+  }
+  return stack.length > 0 ? stack : ["(no frames)"];
+}
+function getMetricValue(row, metricName, columns) {
+  const col = columns.find((c) => c.name === metricName);
+  if (!col) return 0;
+  return resolveNumericValue(row, col);
+}
+function buildLabels(row, labelColumns) {
+  return labelColumns.map((col) => {
+    const value = resolveStringValue(row, col);
+    return { key: col.name, value, isNumeric: col.isNumeric };
+  });
+}
+function getPartitionKey(row, partitionColumns, columns) {
+  if (partitionColumns.length === 0) return "";
+  return partitionColumns.map((name) => {
+    const col = columns.find((c) => c.name === name);
+    const val = col ? resolveStringValue(row, col) : "";
+    return `${name}=${val}`;
+  }).join("|");
+}
+function parsePartitionKey(partKey) {
+  if (partKey === "") return {};
+  const result = {};
+  for (const part of partKey.split("|")) {
+    const eq = part.indexOf("=");
+    if (eq >= 0) result[part.slice(0, eq)] = part.slice(eq + 1);
+  }
+  return result;
+}
+function timestamp() {
+  const d = /* @__PURE__ */ new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+async function gzipCompress(data) {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("gzip"));
+  const reader = stream.getReader();
+  const chunks = [];
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  return concat(...chunks);
+}
+async function generateProfiles(data, columns, config) {
+  if (config.frameOrder.length === 0) {
+    throw new Error("At least one frame column must be selected");
+  }
+  const metricColumns = [...config.roles.entries()].filter(([, role]) => role === "metric").map(([name]) => name);
+  const labelColumnNames = [...config.roles.entries()].filter(([, role]) => role === "label").map(([name]) => name);
+  const labelColumnInfos = labelColumnNames.map((name) => columns.find((c) => c.name === name)).filter((c) => c !== void 0);
+  const partitionColumns = [...config.roles.entries()].filter(([, role]) => role === "partition").map(([name]) => name);
+  const allMetricNames = [...metricColumns, "rows"];
+  const allMetricUnits = [
+    ...metricColumns.map((n) => config.metricUnits.get(n) ?? "count"),
+    "count"
+  ];
+  const partitions = /* @__PURE__ */ new Map();
+  for (const row of data.rows) {
+    const key = getPartitionKey(row, partitionColumns, columns);
+    let bucket = partitions.get(key);
+    if (!bucket) {
+      bucket = [];
+      partitions.set(key, bucket);
+    }
+    bucket.push(row);
+  }
+  const ts = timestamp();
+  const profiles = [];
+  for (const [partKey, rows] of partitions) {
+    const builder = new PprofBuilder(allMetricNames, allMetricUnits);
+    const hasLabels = labelColumnInfos.length > 0;
+    if (hasLabels) {
+      for (const row of rows) {
+        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey);
+        const values = metricColumns.map((name2) => getMetricValue(row, name2, columns));
+        values.push(1);
+        const labels = buildLabels(row, labelColumnInfos);
+        builder.addSample(stack, values, labels);
+      }
+    } else {
+      const stacks = /* @__PURE__ */ new Map();
+      for (const row of rows) {
+        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey);
+        const stackKey = stack.join("\0");
+        const values = metricColumns.map((name2) => getMetricValue(row, name2, columns));
+        values.push(1);
+        const existing = stacks.get(stackKey);
+        if (existing) {
+          for (let i = 0; i < values.length; i++) existing.values[i] += values[i];
+        } else {
+          stacks.set(stackKey, { stack, values });
+        }
+      }
+      for (const { stack, values } of stacks.values()) {
+        builder.addSample(stack, values, []);
+      }
+    }
+    const compressed = await gzipCompress(builder.encode());
+    const partValues = parsePartitionKey(partKey);
+    const displayParts = Object.values(partValues);
+    let name;
+    let fileName;
+    if (partKey === "") {
+      name = "profile";
+      fileName = `profile_${ts}.pb.gz`;
+    } else {
+      name = displayParts.join(" / ");
+      const safeName = displayParts.map((p) => p.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 40)).join("_");
+      fileName = `profile_${safeName}_${ts}.pb.gz`;
+    }
+    profiles.push({
+      name,
+      fileName,
+      data: compressed,
+      sampleCount: hasLabels ? rows.length : new Set(
+        rows.map((row) => buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey).join("\0"))
+      ).size,
+      rowCount: rows.length,
+      partitionValues: partValues
+    });
+  }
+  profiles.sort((a, b) => a.name.localeCompare(b.name));
+  return profiles;
+}
+let _worker = null;
+let _workerFailed = false;
+function getWorker() {
+  if (_workerFailed) return null;
+  if (_worker) return _worker;
+  try {
+    _worker = new WorkerWrapper();
+    return _worker;
+  } catch {
+    _workerFailed = true;
+    return null;
+  }
+}
+async function generateProfilesAsync(data, columns, config, onProgress) {
+  const worker = getWorker();
+  if (!worker) {
+    onProgress == null ? void 0 : onProgress({ message: "Building profiles…", pct: 50 });
+    return generateProfiles(data, columns, config);
+  }
+  return new Promise((resolve, reject) => {
+    const req = {
+      type: "generate",
+      data,
+      columns,
+      config: serializeConfig(config)
+    };
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === "progress") {
+        onProgress == null ? void 0 : onProgress({ message: msg.message, pct: msg.pct });
+      } else if (msg.type === "result") {
+        resolve(msg.profiles.map((p) => ({
+          name: p.name,
+          fileName: p.fileName,
+          data: new Uint8Array(p.data),
+          sampleCount: p.sampleCount,
+          rowCount: p.rowCount,
+          partitionValues: p.partitionValues
+        })));
+      } else if (msg.type === "error") {
+        reject(new Error(msg.message));
+      }
+    };
+    worker.onerror = (e) => {
+      reject(new Error(e.message || "Worker error"));
+    };
+    worker.postMessage(req);
+  });
+}
+const CONFIG_STORAGE_KEY = "pprof-configs";
+const MAX_SAVED_CONFIGS = 20;
+function configKey(headers) {
+  return headers.slice().sort().join("	");
+}
+function loadSavedConfigs() {
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function saveConfig(headers, state) {
+  try {
+    const configs = loadSavedConfigs();
+    configs[configKey(headers)] = {
+      ...serializeConfig({
+        roles: state.roles,
+        frameOrder: state.frameOrder,
+        jsonArrayLabelKey: state.jsonArrayLabelKey,
+        metricUnits: state.metricUnits
+      }),
+      timestamp: Date.now()
+    };
+    const keys = Object.keys(configs);
+    if (keys.length > MAX_SAVED_CONFIGS) {
+      keys.sort((a, b) => configs[a].timestamp - configs[b].timestamp);
+      for (let i = 0; i < keys.length - MAX_SAVED_CONFIGS; i++) {
+        delete configs[keys[i]];
+      }
+    }
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs));
+  } catch {
+  }
+}
+function restoreConfig(headers, columns) {
+  const configs = loadSavedConfigs();
+  const saved = configs[configKey(headers)];
+  if (!saved) return null;
+  const colNames = new Set(columns.map((c) => c.name));
+  const validRoles = saved.roles.filter(([name]) => colNames.has(name));
+  if (validRoles.length === 0) return null;
+  return { ...saved, roles: validRoles };
+}
+function loadTheme() {
+  try {
+    const saved = localStorage.getItem("pprof-theme");
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function errorMessage(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+const S = {
+  theme: loadTheme(),
+  step: "import",
+  rawText: "",
+  fileName: "",
+  parseError: "",
+  data: null,
+  columns: [],
+  roles: /* @__PURE__ */ new Map(),
+  frameOrder: [],
+  jsonArrayLabelKey: /* @__PURE__ */ new Map(),
+  metricUnits: /* @__PURE__ */ new Map(),
+  profiles: [],
+  generating: false,
+  generateError: "",
+  progress: null
+};
+function applyTheme(theme) {
+  S.theme = theme;
+  document.documentElement.setAttribute("data-theme", theme);
+  try {
+    localStorage.setItem("pprof-theme", theme);
+  } catch {
+  }
+}
+function toggleTheme() {
+  applyTheme(S.theme === "light" ? "dark" : "light");
+}
+function inferUnit(name) {
+  const lower = name.toLowerCase();
+  if (lower.includes("size") || lower.includes("byte")) return "bytes";
+  if (lower.includes("time") || lower.includes("dur")) return "nanoseconds";
+  return "count";
+}
+function loadData(text, fileName) {
+  S.rawText = text;
+  S.fileName = fileName;
+  S.parseError = "";
+  S.profiles = [];
+  S.generateError = "";
+  S.progress = null;
+  try {
+    const data = parseTSV(text);
+    if (data.headers.length === 0) {
+      S.parseError = "No headers found. Check that the input is tab-separated.";
+      return;
+    }
+    if (data.rows.length === 0) {
+      S.parseError = "No data rows found.";
+      return;
+    }
+    S.data = data;
+    S.columns = analyzeColumns(data);
+    const saved = restoreConfig(data.headers, S.columns);
+    if (saved) {
+      const restored = deserializeConfig(saved);
+      S.roles = restored.roles;
+      const colNames = new Set(S.columns.map((c) => c.name));
+      S.frameOrder = restored.frameOrder.filter((n) => colNames.has(n));
+      S.jsonArrayLabelKey = new Map(
+        [...restored.jsonArrayLabelKey].filter(([n]) => colNames.has(n))
+      );
+      S.metricUnits = new Map(
+        [...restored.metricUnits].filter(([n]) => colNames.has(n))
+      );
+      for (const col of S.columns) {
+        if (!S.roles.has(col.name)) S.roles.set(col.name, "none");
+      }
+    } else {
+      const defaults = suggestDefaults(S.columns);
+      S.roles = defaults.roles;
+      S.frameOrder = defaults.frameOrder;
+      S.jsonArrayLabelKey = /* @__PURE__ */ new Map();
+      S.metricUnits = /* @__PURE__ */ new Map();
+      for (const col of S.columns) {
+        if (defaults.roles.get(col.name) === "metric") {
+          S.metricUnits.set(col.name, inferUnit(col.name));
+        }
+        if (col.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0) {
+          S.jsonArrayLabelKey.set(col.name, col.jsonArrayKeys[0]);
+        }
+      }
+    }
+    S.step = "configure";
+  } catch (e) {
+    S.parseError = errorMessage(e) || "Failed to parse input";
+  }
+  m$1.redraw();
+}
+function setRole(columnName, role) {
+  const prev = S.roles.get(columnName);
+  S.roles.set(columnName, role);
+  if (role === "frame" && prev !== "frame") {
+    S.frameOrder.push(columnName);
+  } else if (role !== "frame" && prev === "frame") {
+    S.frameOrder = S.frameOrder.filter((n) => n !== columnName);
+  }
+  if (role === "metric" && !S.metricUnits.has(columnName)) {
+    S.metricUnits.set(columnName, "count");
+  }
+}
+function moveFrame(name, direction) {
+  const idx = S.frameOrder.indexOf(name);
+  if (idx < 0) return;
+  const target = idx + direction;
+  if (target < 0 || target >= S.frameOrder.length) return;
+  const other = S.frameOrder[target];
+  S.frameOrder[target] = name;
+  S.frameOrder[idx] = other;
+}
+async function generate() {
+  if (!S.data || S.generating) return;
+  S.generating = true;
+  S.generateError = "";
+  S.profiles = [];
+  S.progress = { message: "Starting…", pct: 0 };
+  m$1.redraw();
+  try {
+    const config = {
+      roles: S.roles,
+      frameOrder: S.frameOrder,
+      jsonArrayLabelKey: S.jsonArrayLabelKey,
+      metricUnits: S.metricUnits
+    };
+    S.profiles = await generateProfilesAsync(S.data, S.columns, config, (p) => {
+      S.progress = p;
+      m$1.redraw();
+    });
+    S.step = "results";
+    if (S.data) {
+      saveConfig(S.data.headers, S);
+    }
+  } catch (e) {
+    S.generateError = errorMessage(e) || "Failed to generate profiles";
+  } finally {
+    S.generating = false;
+    S.progress = null;
+    m$1.redraw();
+  }
+}
+function reset() {
+  S.step = "import";
+  S.rawText = "";
+  S.fileName = "";
+  S.parseError = "";
+  S.data = null;
+  S.columns = [];
+  S.roles = /* @__PURE__ */ new Map();
+  S.frameOrder = [];
+  S.jsonArrayLabelKey = /* @__PURE__ */ new Map();
+  S.metricUnits = /* @__PURE__ */ new Map();
+  S.profiles = [];
+  S.generating = false;
+  S.generateError = "";
+  S.progress = null;
+}
+function downloadProfile(profile) {
+  const blob2 = new Blob([profile.data], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob2);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = profile.fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const PREVIEW_ROWS = 5;
+const PREVIEW_CELL_MAX = 50;
+let dragging = false;
+function handleFile(file) {
+  if (file.size > MAX_FILE_SIZE) {
+    S.parseError = `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB, max ${MAX_FILE_SIZE / 1024 / 1024} MB)`;
+    m$1.redraw();
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => loadData(reader.result, file.name);
+  reader.onerror = () => {
+    S.parseError = "Failed to read file";
+    m$1.redraw();
+  };
+  reader.readAsText(file);
+}
+function handleDrop(e) {
+  var _a;
+  e.preventDefault();
+  dragging = false;
+  m$1.redraw();
+  const file = (_a = e.dataTransfer) == null ? void 0 : _a.files[0];
+  if (file) handleFile(file);
+}
+function truncate(s, max) {
+  return s.length > max ? s.slice(0, max - 3) + "..." : s;
+}
+function renderImportForm() {
+  return m$1("div", [
+    m$1(".card", [
+      m$1(".card-title", "Paste or upload TSV data"),
+      m$1("textarea", {
+        placeholder: "Paste tab-separated data here…\n\nSupports quoted fields, JSON columns, and large datasets.",
+        value: S.rawText,
+        oninput: (e) => {
+          S.rawText = e.target.value;
+        }
+      }),
+      m$1(".drop-zone" + (dragging ? ".dragging" : ""), {
+        style: "margin-top: 12px;",
+        ondragover: (e) => {
+          e.preventDefault();
+          if (!dragging) {
+            dragging = true;
+            m$1.redraw();
+          }
+        },
+        ondragleave: () => {
+          if (dragging) {
+            dragging = false;
+            m$1.redraw();
+          }
+        },
+        ondrop: handleDrop,
+        onclick: () => {
+          var _a;
+          (_a = document.getElementById("file-input")) == null ? void 0 : _a.click();
+        }
+      }, [
+        m$1("div", "Drop a .tsv file here or click to browse"),
+        m$1("input#file-input", {
+          type: "file",
+          accept: ".tsv,.csv,.txt",
+          onchange: (e) => {
+            var _a;
+            const file = (_a = e.target.files) == null ? void 0 : _a[0];
+            if (file) handleFile(file);
+          }
+        })
+      ]),
+      S.rawText.trim() ? m$1(".actions", [
+        m$1(".spacer"),
+        m$1("button.btn.primary", {
+          onclick: () => loadData(S.rawText, "")
+        }, "Parse data")
+      ]) : null
+    ]),
+    S.parseError ? m$1(".msg-error", S.parseError) : null
+  ]);
+}
+function renderSummary() {
+  return m$1(".card", [
+    m$1(".stats", [
+      m$1(".stat", [m$1("strong", S.data.headers.length), " columns"]),
+      m$1(".stat", [m$1("strong", S.data.rows.length.toLocaleString()), " rows"]),
+      S.fileName ? m$1(".stat", ["from ", m$1("strong", S.fileName)]) : null
+    ]),
+    m$1(".actions.actions-flush", [
+      m$1("button.btn.sm", { onclick: reset }, "Load different data")
+    ])
+  ]);
+}
+function renderPreview() {
+  if (!S.data || S.step !== "import") return null;
+  return m$1(".card.section-gap", [
+    m$1(".card-title", "Data preview"),
+    m$1(".preview-table", [
+      m$1("table", [
+        m$1("thead", m$1("tr", S.data.headers.map((h) => m$1("th", h)))),
+        m$1("tbody", S.data.rows.slice(0, PREVIEW_ROWS).map(
+          (row) => m$1("tr", S.data.headers.map((h) => {
+            const val = row[h] ?? "";
+            return m$1("td", { title: val }, truncate(val, PREVIEW_CELL_MAX));
+          }))
+        )),
+        S.data.rows.length > PREVIEW_ROWS ? m$1("tfoot", m$1(
+          "tr",
+          m$1(
+            "td.truncated",
+            { colspan: S.data.headers.length },
+            `… and ${(S.data.rows.length - PREVIEW_ROWS).toLocaleString()} more rows`
+          )
+        )) : null
+      ])
+    ])
+  ]);
+}
+const Import = {
+  view() {
+    if (S.data) {
+      return m$1("div", [
+        renderSummary(),
+        renderPreview()
+      ]);
+    }
+    return renderImportForm();
+  }
+};
+const ROLES = [
+  { key: "none", label: "Skip" },
+  { key: "frame", label: "Frame" },
+  { key: "metric", label: "Metric" },
+  { key: "label", label: "Label" },
+  { key: "partition", label: "Partition" }
+];
+const UNIT_SUGGESTIONS = [
+  "bytes",
+  "count",
+  "nanoseconds",
+  "microseconds",
+  "milliseconds",
+  "seconds",
+  "objects",
+  "pages",
+  "requests",
+  "errors"
+];
+function isJsonParent(colName) {
+  return S.columns.some((c) => c.source === colName && c.jsonKey !== void 0) && S.columns.some((c) => c.name === colName && c.source === colName && !c.jsonKey);
+}
+const Configure = {
+  view() {
+    if (!S.data) return null;
+    const frameColumns = S.frameOrder;
+    const metricColumns = S.columns.filter((c) => S.roles.get(c.name) === "metric");
+    const hasFrames = frameColumns.length > 0;
+    return m$1("div", [
+      // Column assignment
+      m$1(".card", [
+        m$1(".card-title", "Assign column roles"),
+        m$1(".col-list", S.columns.map((col) => {
+          if (col.source === col.name && !col.jsonKey && isJsonParent(col.name)) {
+            return m$1(".col-row.json-parent", { key: `parent:${col.name}` }, [
+              m$1("span", `${col.name} `),
+              m$1("span", { style: "font-style: italic;" }, "(JSON object — sub-fields below)")
+            ]);
+          }
+          const role = S.roles.get(col.name) ?? "none";
+          return m$1(".col-row", { key: col.name }, [
+            m$1(".col-name", [
+              col.jsonKey !== void 0 ? [m$1("span.json-prefix", `${col.source}.`), col.jsonKey] : col.isJsonArray ? [col.name, " ", m$1("span.json-prefix", "[array]")] : col.name
+            ]),
+            m$1(".col-samples", col.sampleValues.join(", ") || "—"),
+            m$1(
+              ".col-role",
+              ROLES.filter((r) => r.key !== "metric" || col.isNumeric).map(
+                (r) => m$1("button.role-btn", {
+                  class: role === r.key ? "active" : "",
+                  onclick: () => setRole(col.name, r.key)
+                }, r.label)
+              )
+            )
+          ]);
+        }))
+      ]),
+      // Frame order
+      hasFrames ? m$1(".card", [
+        m$1(".card-title", "Frame order (top → root, bottom → leaf)"),
+        m$1(".frame-order", frameColumns.map((name, idx) => {
+          const col = S.columns.find((c) => c.name === name);
+          const isFirst = idx === 0;
+          const isLast = idx === frameColumns.length - 1;
+          return m$1(".frame-item", { key: name }, [
+            m$1(".frame-idx", `${idx + 1}.`),
+            m$1(".frame-name", name),
+            frameColumns.length > 1 ? m$1(".frame-label", isFirst ? "root" : isLast ? "leaf" : "") : null,
+            m$1(".frame-arrows", [
+              m$1("button", {
+                disabled: isFirst,
+                onclick: () => moveFrame(name, -1),
+                "aria-label": `Move ${name} up`
+              }, "▲"),
+              m$1("button", {
+                disabled: isLast,
+                onclick: () => moveFrame(name, 1),
+                "aria-label": `Move ${name} down`
+              }, "▼")
+            ]),
+            // JSON array: label key selector (only place it appears)
+            (col == null ? void 0 : col.isJsonArray) && col.jsonArrayKeys && col.jsonArrayKeys.length > 0 ? m$1(".json-array-config", [
+              "Label key: ",
+              m$1("select", {
+                "aria-label": `Label key for ${name}`,
+                value: S.jsonArrayLabelKey.get(name) ?? col.jsonArrayKeys[0],
+                onchange: (e) => {
+                  S.jsonArrayLabelKey.set(name, e.target.value);
+                }
+              }, col.jsonArrayKeys.map((k) => m$1("option", { value: k }, k)))
+            ]) : null
+          ]);
+        }))
+      ]) : null,
+      // Metrics & units
+      m$1(".card", [
+        m$1(".card-title", metricColumns.length > 0 ? "Metrics & units" : "Metrics"),
+        m$1(".metric-list", [
+          ...metricColumns.map(
+            (col) => m$1(".metric-item", { key: col.name }, [
+              m$1(".metric-name", col.name),
+              m$1("input[type=text].unit-input", {
+                "aria-label": `Unit for ${col.name}`,
+                list: "unit-suggestions",
+                value: S.metricUnits.get(col.name) ?? "count",
+                oninput: (e) => {
+                  S.metricUnits.set(col.name, e.target.value);
+                },
+                placeholder: "unit"
+              })
+            ])
+          ),
+          m$1(
+            "datalist#unit-suggestions",
+            { key: "_datalist" },
+            UNIT_SUGGESTIONS.map((u) => m$1("option", { value: u }))
+          ),
+          m$1(".metric-item", { key: "_rows" }, [
+            m$1(".metric-name", "rows"),
+            m$1(".rows-badge", "auto — count of input rows")
+          ])
+        ])
+      ]),
+      // Generate
+      m$1(".actions", [
+        m$1(".spacer"),
+        S.generateError ? m$1("span", { style: "color: var(--error); font-size: 0.85rem;" }, S.generateError) : null,
+        S.generating ? m$1("button.btn.primary", { disabled: true }, [
+          m$1(".spinner"),
+          S.progress ? ` ${S.progress.message}` : " Generating…"
+        ]) : m$1("button.btn.primary", {
+          disabled: !hasFrames,
+          onclick: generate,
+          title: hasFrames ? "" : "Select at least one frame column"
+        }, "Generate profiles")
+      ]),
+      // Progress bar
+      S.generating && S.progress ? m$1(".progress-bar", [
+        m$1(".progress-fill", { style: `width: ${Math.round(S.progress.pct)}%` })
+      ]) : null
+    ]);
+  }
+};
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+const selected = /* @__PURE__ */ new Set();
+let lastProfileSet = "";
+function syncSelection() {
+  const currentSet = S.profiles.map((p) => p.fileName).sort().join("\0");
+  if (currentSet !== lastProfileSet) {
+    selected.clear();
+    for (const p of S.profiles) selected.add(p.fileName);
+    lastProfileSet = currentSet;
+  }
+}
+function toggleSelect(fileName) {
+  if (selected.has(fileName)) selected.delete(fileName);
+  else selected.add(fileName);
+}
+function selectAll() {
+  for (const p of S.profiles) selected.add(p.fileName);
+}
+function selectNone() {
+  selected.clear();
+}
+function downloadSelected() {
+  for (const p of S.profiles) {
+    if (selected.has(p.fileName)) downloadProfile(p);
+  }
+}
+const Results = {
+  view() {
+    const profiles = S.profiles;
+    if (profiles.length === 0) {
+      return m$1(".card", m$1("p", { style: "color: var(--text-secondary);" }, "No profiles generated yet."));
+    }
+    syncSelection();
+    const totalRows = profiles.reduce((s, p) => s + p.rowCount, 0);
+    const totalSamples = profiles.reduce((s, p) => s + p.sampleCount, 0);
+    const totalBytes = profiles.reduce((s, p) => s + p.data.length, 0);
+    const allSelected = profiles.every((p) => selected.has(p.fileName));
+    const noneSelected = selected.size === 0;
+    const selectedCount = profiles.filter((p) => selected.has(p.fileName)).length;
+    return m$1("div", [
+      m$1(".card", [
+        m$1(".card-title", "Generated profiles"),
+        m$1(".stats", [
+          m$1(".stat", [m$1("strong", profiles.length), profiles.length === 1 ? " profile" : " profiles"]),
+          m$1(".stat", [m$1("strong", totalRows.toLocaleString()), " total rows"]),
+          m$1(".stat", [m$1("strong", totalSamples.toLocaleString()), " unique stacks"]),
+          m$1(".stat", [m$1("strong", formatBytes(totalBytes)), " total size"])
+        ]),
+        profiles.length > 1 ? m$1(".actions.actions-flush-sm", [
+          m$1("button.btn.sm", {
+            onclick: allSelected ? selectNone : selectAll
+          }, allSelected ? "Deselect all" : "Select all"),
+          m$1(".spacer"),
+          m$1("button.btn.sm", {
+            disabled: noneSelected,
+            onclick: downloadSelected
+          }, selectedCount === profiles.length ? "Download all" : `Download ${selectedCount} selected`)
+        ]) : null
+      ]),
+      m$1(".profile-list", profiles.map(
+        (p) => m$1(".profile-card", { key: p.fileName }, [
+          profiles.length > 1 ? m$1("input[type=checkbox]", {
+            checked: selected.has(p.fileName),
+            onchange: () => toggleSelect(p.fileName),
+            "aria-label": `Select ${p.name}`,
+            class: "checkbox-accent"
+          }) : null,
+          m$1(".profile-info", [
+            m$1(".profile-name", p.name),
+            m$1(".profile-meta", [
+              `${p.rowCount.toLocaleString()} rows, `,
+              `${p.sampleCount.toLocaleString()} samples, `,
+              formatBytes(p.data.length)
+            ]),
+            m$1(".profile-file", p.fileName)
+          ]),
+          m$1("button.btn.sm.primary", {
+            onclick: () => downloadProfile(p),
+            "aria-label": `Download ${p.fileName}`
+          }, "Download")
+        ])
+      )),
+      m$1(".card.section-gap.hint-card", [
+        m$1(".card-title", "Usage"),
+        m$1("div", { style: "font-size: 0.8rem; color: var(--text-secondary); line-height: 1.8;" }, [
+          m$1("code.code-inline", "pprof -http=:8080 profile.pb.gz"),
+          m$1("br"),
+          "or open in Perfetto UI at ",
+          m$1("code.code-inline", "ui.perfetto.dev")
+        ])
+      ])
+    ]);
+  }
+};
+const STEPS = ["import", "configure", "results"];
+const STEP_LABELS = ["1. Import", "2. Configure", "3. Profiles"];
+const App = {
+  oninit() {
+    applyTheme(S.theme);
+  },
+  view() {
+    const themeLabel = S.theme === "light" ? "Switch to dark mode" : "Switch to light mode";
+    return m$1(".shell", [
+      m$1(".header", [
+        m$1("h1", "JSON to pprof"),
+        m$1(".header-actions", [
+          m$1("button.btn-icon", {
+            onclick: toggleTheme,
+            title: themeLabel,
+            "aria-label": themeLabel
+          }, S.theme === "light" ? "☾" : "☀")
+        ])
+      ]),
+      S.data ? m$1(".steps", STEPS.map(
+        (step, i) => m$1("button.step-btn", {
+          key: step,
+          class: S.step === step ? "active" : "",
+          disabled: step === "results" && S.profiles.length === 0,
+          onclick: () => {
+            if (step === "results" && S.profiles.length === 0) return;
+            S.step = step;
+          }
+        }, STEP_LABELS[i])
+      )) : null,
+      m$1(".content", [
+        S.step === "import" ? m$1(Import) : null,
+        S.step === "configure" ? m$1(Configure) : null,
+        S.step === "results" ? m$1(Results) : null
+      ])
+    ]);
+  }
+};
+const CSS = `
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Geist', system-ui, sans-serif;
+  --radius: 4px;
+  --radius-sm: 2px;
+  --transition: 120ms ease;
+}
+
+[data-theme="light"] {
+  --bg: #fafafa;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f4f4f5;
+  --bg-accent: #f0f0f2;
+  --border: #e0e0e3;
+  --border-focus: #888;
+  --text: #1a1a1a;
+  --text-secondary: #666;
+  --text-tertiary: #999;
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --accent-bg: #e8f0fe;
+  --success: #188038;
+  --success-bg: #e6f4ea;
+  --error: #c5221f;
+  --error-bg: #fce8e6;
+  --shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+[data-theme="dark"] {
+  --bg: #121212;
+  --bg-card: #1e1e1e;
+  --bg-input: #292929;
+  --bg-hover: #2c2c2c;
+  --bg-accent: #2a2a2e;
+  --border: #3c3c3c;
+  --border-focus: #777;
+  --text: #e0e0e0;
+  --text-secondary: #999;
+  --text-tertiary: #666;
+  --accent: #8ab4f8;
+  --accent-hover: #aecbfa;
+  --accent-bg: #1a2744;
+  --success: #81c995;
+  --success-bg: #1a2e1f;
+  --error: #f28b82;
+  --error-bg: #3c1f1e;
+  --shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+html { font-size: 13px; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Cards --- */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 0.77rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn:active { opacity: 0.85; }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.primary:disabled { opacity: 0.4; cursor: default; }
+
+.btn.sm { padding: 3px 8px; font-size: 0.8rem; }
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: 0.95rem;
+}
+.btn-icon:hover { background: var(--bg-hover); color: var(--text); }
+
+/* --- Inputs --- */
+textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color var(--transition);
+}
+textarea:focus { outline: none; border-color: var(--border-focus); }
+textarea::placeholder { color: var(--text-tertiary); }
+
+select {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+select:focus { outline: none; border-color: var(--border-focus); }
+
+input[type="text"] {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+}
+input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
+
+/* --- Drop zone --- */
+.drop-zone {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  transition: all var(--transition);
+  cursor: pointer;
+}
+.drop-zone:hover, .drop-zone.dragging {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.drop-zone input[type="file"] { display: none; }
+
+/* --- Preview table --- */
+.preview-table {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.preview-table th, .preview-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-table th {
+  background: var(--bg-accent);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.preview-table tr:last-child td { border-bottom: none; }
+.preview-table .truncated { color: var(--text-tertiary); font-style: italic; }
+
+/* --- Column config --- */
+.col-list { display: flex; flex-direction: column; gap: 3px; }
+
+.col-row {
+  display: grid;
+  grid-template-columns: 170px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  font-size: 0.8rem;
+}
+.col-row:hover { background: var(--bg-hover); }
+.col-row.json-parent {
+  background: var(--bg-accent);
+  border-style: dashed;
+  grid-template-columns: 1fr;
+  padding: 4px 10px;
+  font-size: 0.77rem;
+  color: var(--text-secondary);
+}
+
+.col-name {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-name .json-prefix { color: var(--text-tertiary); }
+
+.col-samples {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-role { display: flex; gap: 2px; }
+
+.role-btn {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.role-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.role-btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Frame order --- */
+.frame-order { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+
+.frame-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.frame-item .frame-idx { color: var(--text-tertiary); font-size: 0.72rem; min-width: 18px; }
+.frame-item .frame-name { flex: 1; }
+.frame-item .frame-label { font-size: 0.7rem; color: var(--text-tertiary); font-family: var(--sans); }
+
+.frame-arrows { display: flex; gap: 1px; }
+.frame-arrows button {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.65rem;
+  transition: background var(--transition);
+}
+.frame-arrows button:hover { background: var(--bg-hover); }
+.frame-arrows button:disabled { opacity: 0.25; cursor: default; }
+
+.json-array-config {
+  margin-left: 14px;
+  padding: 5px 10px;
+  border-left: 2px solid var(--accent);
+  margin-top: 2px;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+/* --- Metrics --- */
+.metric-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.metric-item .metric-name { flex: 1; }
+.metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
+
+/* --- Results --- */
+.profile-list { display: flex; flex-direction: column; gap: 6px; }
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+.profile-card:hover { background: var(--bg-hover); }
+
+.profile-info { flex: 1; min-width: 0; }
+.profile-name { font-weight: 600; font-size: 0.9rem; }
+.profile-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 1px; }
+.profile-file { font-family: var(--mono); font-size: 0.72rem; color: var(--text-tertiary); }
+
+/* --- Steps --- */
+.steps {
+  display: flex;
+  gap: 1px;
+  margin-bottom: 20px;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.step-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.step-btn:hover { background: var(--bg-hover); }
+.step-btn.active { background: var(--accent-bg); color: var(--accent); }
+.step-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* --- Messages --- */
+.msg-error {
+  padding: 8px 12px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  color: var(--error);
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+
+
+/* --- Stats --- */
+.stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.stat { font-size: 0.8rem; color: var(--text-secondary); }
+.stat strong { color: var(--text); font-weight: 600; }
+
+.section-gap { margin-top: 16px; }
+
+/* --- Actions --- */
+.actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.actions .spacer { flex: 1; }
+
+/* --- Progress --- */
+.progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+/* --- Spinner --- */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.5s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Compact actions (no top border) --- */
+.actions-flush { border-top: none; padding-top: 0; margin-top: 8px; }
+.actions-flush-sm { border-top: none; padding-top: 0; margin-top: 4px; }
+
+/* --- Inline utilities --- */
+.unit-input { width: 120px; }
+.checkbox-accent { cursor: pointer; accent-color: var(--accent); }
+
+/* --- Hint card --- */
+.hint-card { background: var(--accent-bg); border-color: var(--accent); }
+.hint-card .card-title { color: var(--accent); }
+.code-inline {
+  font-family: var(--mono);
+  background: var(--bg-accent);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .shell { padding: 12px 8px 36px; }
+  .col-row { grid-template-columns: 1fr; gap: 4px; }
+  .profile-card { flex-direction: column; align-items: stretch; gap: 6px; }
+}
+`;
+const style = document.createElement("style");
+style.textContent = CSS;
+document.head.appendChild(style);
+m$1.mount(document.getElementById("app"), App);</script>
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>
