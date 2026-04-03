@@ -227,7 +227,7 @@ select { cursor: pointer; }
 
 /* --- Configure: add column dropdown --- */
 .add-col-select {
-  width: 90px;
+  width: 120px;
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -524,6 +524,6 @@ select { cursor: pointer; }
 @media (max-width: 600px) {
   .shell { padding: 12px 8px 36px; }
   .profile-card { flex-direction: column; align-items: stretch; gap: 6px; }
-  .add-col-select { width: 90px; }
+  .add-col-select { width: 100px; }
 }
 `
