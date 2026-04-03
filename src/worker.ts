@@ -30,7 +30,7 @@ export interface ResultMessage {
     sampleCount: number
     rowCount: number
     partitionValues: Record<string, string>
-    textSamples: { stack: string[]; values: Record<string, number> }[]
+    textSamples: { stack: string[]; values: Record<string, number>; labels: Record<string, string> }[]
   }[]
 }
 

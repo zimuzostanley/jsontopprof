@@ -48,6 +48,7 @@ export interface ProfileConfig {
 export interface TextSample {
   stack: string[]
   values: Record<string, number>
+  labels: Record<string, string>
 }
 
 /** A generated pprof profile */

@@ -3,13 +3,16 @@ import { S } from '../state'
 import type { GeneratedProfile, TextSample } from '../models/types'
 
 let copyFeedback = ''
-let copyTimer: ReturnType<typeof setTimeout> | null = null
+let copyTimer: number | null = null
 
 function showCopyFeedback(msg: string): void {
   copyFeedback = msg
-  if (copyTimer) clearTimeout(copyTimer)
-  copyTimer = setTimeout(() => { copyFeedback = ''; m.redraw() }, 1500)
-  m.redraw()
+  if (copyTimer !== null) clearTimeout(copyTimer)
+  copyTimer = window.setTimeout(() => {
+    copyFeedback = ''
+    copyTimer = null
+    m.redraw()
+  }, 1500)
 }
 
 function toggleMetric(name: string): void {
@@ -19,12 +22,26 @@ function toggleMetric(name: string): void {
 
 function formatSample(s: TextSample, metrics: Set<string>): string {
   const stackStr = s.stack.join(';')
-  if (metrics.size === 0) return stackStr
-  const vals = [...metrics]
-    .filter(name => name in s.values)
-    .map(name => `${name}: ${s.values[name].toLocaleString()}`)
-    .join(', ')
-  return vals ? `${stackStr} [${vals}]` : stackStr
+
+  const parts: string[] = []
+
+  // Metrics in brackets
+  if (metrics.size > 0) {
+    const vals = [...metrics]
+      .filter(name => name in s.values)
+      .map(name => `${name}: ${s.values[name].toLocaleString()}`)
+    if (vals.length > 0) parts.push(vals.join(', '))
+  }
+
+  // Labels in braces
+  const labelKeys = Object.keys(s.labels)
+  if (labelKeys.length > 0) {
+    const lbls = labelKeys.map(k => `${k}=${s.labels[k]}`)
+    parts.push(lbls.join(', '))
+  }
+
+  if (parts.length === 0) return stackStr
+  return `${stackStr} [${parts.join(' | ')}]`
 }
 
 function formatProfile(profile: GeneratedProfile, metrics: Set<string>): string {
@@ -54,7 +71,18 @@ function getMetricNames(): string[] {
   return []
 }
 
+function hasLabels(): boolean {
+  return S.profiles.some(p =>
+    p.textSamples.some(s => Object.keys(s.labels).length > 0)
+  )
+}
+
 export const TextView: m.Component = {
+  onremove() {
+    if (copyTimer !== null) { clearTimeout(copyTimer); copyTimer = null }
+    copyFeedback = ''
+  },
+
   view() {
     const profiles = S.profiles
     if (profiles.length === 0) return null
@@ -62,11 +90,12 @@ export const TextView: m.Component = {
     const metricNames = getMetricNames()
     const metrics = S.textMetrics
     const allText = formatAll(profiles, metrics)
+    const showLabels = hasLabels()
 
     return m('div', [
       // Metric toggles
-      m('.card', [
-        m('.card-title', 'Show metrics'),
+      metricNames.length > 0 ? m('.card', [
+        m('.card-title', 'Visible metrics'),
         m('.col-role', metricNames.map(name =>
           m('button.role-btn', {
             key: name,
@@ -74,13 +103,15 @@ export const TextView: m.Component = {
             onclick: () => toggleMetric(name),
           }, name)
         )),
-      ]),
+        showLabels
+          ? m('div', { style: 'margin-top: 6px; font-size: 0.72rem; color: var(--text-tertiary);' },
+              'Labels shown automatically in {braces}')
+          : null,
+      ]) : null,
 
       // Copy all + feedback
       m('.actions.actions-flush', [
-        copyFeedback
-          ? m('.copy-feedback', copyFeedback)
-          : null,
+        copyFeedback ? m('.copy-feedback', copyFeedback) : null,
         m('.spacer'),
         m('button.btn.sm', {
           onclick: () => copyText(allText, profiles.length === 1 ? 'profile' : 'all profiles'),
@@ -95,7 +126,8 @@ export const TextView: m.Component = {
             ? m('.text-profile-header', [
                 m('span', [
                   p.name,
-                  m('span.text-profile-meta', ` \u2014 ${p.rowCount} rows, ${p.sampleCount} samples`),
+                  m('span.text-profile-meta',
+                    ` \u2014 ${p.rowCount} rows, ${p.sampleCount} samples`),
                 ]),
                 m('button.btn.sm', {
                   onclick: () => copyText(text, p.name),

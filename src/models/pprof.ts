@@ -355,10 +355,14 @@ export async function generateProfiles(
     const hasLabels = labelColumnInfos.length > 0
     const textSamples: TextSample[] = []
 
-    function toTextSample(stack: string[], values: number[]): TextSample {
+    function toTextSample(
+      stack: string[],
+      values: number[],
+      lbls: Record<string, string> = {},
+    ): TextSample {
       const rec: Record<string, number> = {}
       for (let i = 0; i < allMetricNames.length; i++) rec[allMetricNames[i]] = values[i]
-      return { stack, values: rec }
+      return { stack, values: rec, labels: lbls }
     }
 
     if (hasLabels) {
@@ -366,8 +370,11 @@ export async function generateProfiles(
         const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
-        builder.addSample(stack, values, buildLabels(row, labelColumnInfos))
-        textSamples.push(toTextSample(stack, values))
+        const sampleLabels = buildLabels(row, labelColumnInfos)
+        builder.addSample(stack, values, sampleLabels)
+        const labelRec: Record<string, string> = {}
+        for (const l of sampleLabels) labelRec[l.key] = l.value
+        textSamples.push(toTextSample(stack, values, labelRec))
       }
     } else {
       const stacks = new Map<string, { stack: string[]; values: number[] }>()
