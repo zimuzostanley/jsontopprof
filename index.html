@@ -2526,7 +2526,7 @@ const Configure = {
       m$1(".card", [
         m$1(".card-title", "Assign column roles"),
         m$1(".col-list", S.columns.map((col) => {
-          if (isJsonParent(col)) return null;
+          if (isJsonParent(col)) return m$1("div", { key: `skip:${col.name}`, style: "display:none" });
           const role = S.roles.get(col.name) ?? "none";
           return m$1(".col-row", { key: col.name }, [
             m$1(
