@@ -1,5 +1,5 @@
 import m from 'mithril'
-import { S, downloadProfile, downloadAll } from '../state'
+import { S, downloadProfile } from '../state'
 import { formatBytes } from '../utils/format'
 import { GeneratedProfile } from '../models/types'
 
@@ -57,7 +57,7 @@ export const Results: m.Component = {
           m('.stat', [m('strong', totalSamples.toLocaleString()), ' unique stacks']),
           m('.stat', [m('strong', formatBytes(totalBytes)), ' total size']),
         ]),
-        profiles.length > 1 ? m('.actions', { style: 'border-top: none; padding-top: 0; margin-top: 4px;' }, [
+        profiles.length > 1 ? m('.actions.actions-flush-sm', [
           m('button.btn.sm', {
             onclick: allSelected ? selectNone : selectAll,
           }, allSelected ? 'Deselect all' : 'Select all'),
@@ -78,7 +78,7 @@ export const Results: m.Component = {
                 checked: selected.has(p.fileName),
                 onchange: () => toggleSelect(p.fileName),
                 'aria-label': `Select ${p.name}`,
-                style: 'cursor: pointer; accent-color: var(--accent);',
+                class: 'checkbox-accent',
               })
             : null,
           m('.profile-info', [

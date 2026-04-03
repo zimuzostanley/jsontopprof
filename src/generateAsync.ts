@@ -1,9 +1,7 @@
-// Async wrapper that runs profile generation in a Web Worker.
-// Falls back to synchronous main-thread generation if worker fails.
-
 import InlineWorker from './worker?worker&inline'
 import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './models/types'
 import { generateProfiles as generateSync } from './models/pprof'
+import { serializeConfig } from './models/configWire'
 import type { GenerateRequest, ProgressMessage, ResultMessage, ErrorMessage } from './worker'
 
 let _worker: Worker | null = null
@@ -26,10 +24,6 @@ export interface GenerateProgress {
   pct: number
 }
 
-/**
- * Generate profiles, preferring the worker for non-blocking UI.
- * Falls back to main-thread if worker is unavailable.
- */
 export async function generateProfilesAsync(
   data: ParsedData,
   columns: ColumnInfo[],
@@ -48,12 +42,7 @@ export async function generateProfilesAsync(
       type: 'generate',
       data,
       columns,
-      config: {
-        roles: [...config.roles.entries()],
-        frameOrder: config.frameOrder,
-        jsonArrayLabelKey: [...config.jsonArrayLabelKey.entries()],
-        metricUnits: [...config.metricUnits.entries()],
-      },
+      config: serializeConfig(config),
     }
 
     worker.onmessage = (e: MessageEvent<ProgressMessage | ResultMessage | ErrorMessage>) => {
@@ -61,15 +50,14 @@ export async function generateProfilesAsync(
       if (msg.type === 'progress') {
         onProgress?.({ message: msg.message, pct: msg.pct })
       } else if (msg.type === 'result') {
-        const profiles: GeneratedProfile[] = msg.profiles.map(p => ({
+        resolve(msg.profiles.map(p => ({
           name: p.name,
           fileName: p.fileName,
           data: new Uint8Array(p.data),
           sampleCount: p.sampleCount,
           rowCount: p.rowCount,
           partitionValues: p.partitionValues,
-        }))
-        resolve(profiles)
+        })))
       } else if (msg.type === 'error') {
         reject(new Error(msg.message))
       }

@@ -115,7 +115,7 @@ export const Configure: m.Component = {
           ...metricColumns.map(col =>
             m('.metric-item', { key: col.name }, [
               m('.metric-name', col.name),
-              m('input[type=text]', {
+              m('input[type=text].unit-input', {
                 'aria-label': `Unit for ${col.name}`,
                 list: 'unit-suggestions',
                 value: S.metricUnits.get(col.name) ?? 'count',
@@ -123,7 +123,6 @@ export const Configure: m.Component = {
                   S.metricUnits.set(col.name, (e.target as HTMLInputElement).value)
                 },
                 placeholder: 'unit',
-                style: 'width: 120px;',
               }),
             ])
           ),

@@ -1,7 +1,6 @@
 import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './types'
 
-// ── Protobuf wire format ──
-// Wire type 0 = varint, wire type 2 = length-delimited.
+// Protobuf wire format: type 0 = varint, type 2 = length-delimited.
 // Field numbers per google/pprof/profile.proto.
 
 function varint(value: number): Uint8Array {
@@ -56,7 +55,6 @@ function fieldMessage(field: number, msg: Uint8Array): Uint8Array {
 
 const encoder = new TextEncoder()
 
-// ── String table ──
 
 class StringTable {
   private strings: string[] = ['']
@@ -76,8 +74,7 @@ class StringTable {
   }
 }
 
-// ── Pprof Sample.Label ──
-// Per profile.proto: Label { key=1, str=2, num=3, num_unit=4 }
+// profile.proto Label { key=1, str=2, num=3, num_unit=4 }
 
 interface SampleLabel {
   key: string
@@ -85,7 +82,6 @@ interface SampleLabel {
   isNumeric: boolean
 }
 
-// ── Pprof builder ──
 
 class PprofBuilder {
   private strings = new StringTable()
@@ -205,7 +201,6 @@ function resolveNumericValue(row: Record<string, string>, col: ColumnInfo): numb
   return isNaN(n) ? 0 : Math.max(0, Math.round(n))
 }
 
-// ── Stack & partition helpers ──
 
 function buildStack(
   row: Record<string, string>,
@@ -294,7 +289,6 @@ function timestamp(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
 }
 
-// ── Gzip ──
 
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([data as unknown as ArrayBuffer]).stream()
@@ -309,7 +303,6 @@ async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   return concat(...chunks)
 }
 
-// ── Profile generation ──
 
 export async function generateProfiles(
   data: ParsedData,

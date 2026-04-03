@@ -472,6 +472,14 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* --- Compact actions (no top border) --- */
+.actions-flush { border-top: none; padding-top: 0; margin-top: 8px; }
+.actions-flush-sm { border-top: none; padding-top: 0; margin-top: 4px; }
+
+/* --- Inline utilities --- */
+.unit-input { width: 120px; }
+.checkbox-accent { cursor: pointer; accent-color: var(--accent); }
+
 /* --- Hint card --- */
 .hint-card { background: var(--accent-bg); border-color: var(--accent); }
 .hint-card .card-title { color: var(--accent); }

@@ -1,22 +1,17 @@
 import m from 'mithril'
 import { ColumnRole, ProfileConfig, GeneratedProfile, AppStep } from './models/types'
 import { parseTSV, analyzeColumns, suggestDefaults } from './models/tsv'
+import { serializeConfig, deserializeConfig } from './models/configWire'
 import { generateProfilesAsync, GenerateProgress } from './generateAsync'
-
+import type { SerializedConfig } from './models/configWire'
 import type { ColumnInfo, ParsedData } from './models/types'
 
-// ── Config persistence ──
-// Saves column role assignments keyed by the sorted header list.
-// When the same schema is re-imported, previous config is restored.
+// Config persistence: saves column role assignments keyed by sorted header list.
 
 const CONFIG_STORAGE_KEY = 'pprof-configs'
 const MAX_SAVED_CONFIGS = 20
 
-interface SavedConfig {
-  roles: [string, string][]
-  frameOrder: string[]
-  jsonArrayLabelKey: [string, string][]
-  metricUnits: [string, string][]
+interface SavedConfig extends SerializedConfig {
   timestamp: number
 }
 
@@ -35,10 +30,12 @@ function saveConfig(headers: string[], state: State): void {
   try {
     const configs = loadSavedConfigs()
     configs[configKey(headers)] = {
-      roles: [...state.roles.entries()],
-      frameOrder: state.frameOrder,
-      jsonArrayLabelKey: [...state.jsonArrayLabelKey.entries()],
-      metricUnits: [...state.metricUnits.entries()],
+      ...serializeConfig({
+        roles: state.roles,
+        frameOrder: state.frameOrder,
+        jsonArrayLabelKey: state.jsonArrayLabelKey,
+        metricUnits: state.metricUnits,
+      }),
       timestamp: Date.now(),
     }
     // Prune oldest if over limit
@@ -157,15 +154,13 @@ export function loadData(text: string, fileName: string): void {
     // Try to restore a previous config for this schema
     const saved = restoreConfig(data.headers, S.columns)
     if (saved) {
-      S.roles = new Map(saved.roles as [string, ColumnRole][])
-      S.frameOrder = saved.frameOrder.filter(n => S.columns.some(c => c.name === n))
-      S.jsonArrayLabelKey = new Map(saved.jsonArrayLabelKey)
-      S.metricUnits = new Map(saved.metricUnits)
-      // Fill in any new columns not in saved config
+      const restored = deserializeConfig(saved)
+      S.roles = restored.roles
+      S.frameOrder = restored.frameOrder.filter(n => S.columns.some(c => c.name === n))
+      S.jsonArrayLabelKey = restored.jsonArrayLabelKey
+      S.metricUnits = restored.metricUnits
       for (const col of S.columns) {
-        if (!S.roles.has(col.name)) {
-          S.roles.set(col.name, 'none')
-        }
+        if (!S.roles.has(col.name)) S.roles.set(col.name, 'none')
       }
     } else {
       // Apply smart defaults
@@ -277,8 +272,4 @@ export function downloadProfile(profile: GeneratedProfile): void {
   a.download = profile.fileName
   a.click()
   URL.revokeObjectURL(url)
-}
-
-export function downloadAll(): void {
-  for (const p of S.profiles) downloadProfile(p)
 }

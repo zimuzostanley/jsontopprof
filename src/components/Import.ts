@@ -91,7 +91,7 @@ function renderSummary(): m.Vnode {
       m('.stat', [m('strong', S.data!.rows.length.toLocaleString()), ' rows']),
       S.fileName ? m('.stat', ['from ', m('strong', S.fileName)]) : null,
     ]),
-    m('.actions', { style: 'border-top: none; padding-top: 0; margin-top: 8px;' }, [
+    m('.actions.actions-flush', [
       m('button.btn.sm', { onclick: reset }, 'Load different data'),
     ]),
   ])
