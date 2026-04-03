@@ -2,108 +2,125 @@ import m from 'mithril'
 import { S, setRole, moveFrame, generate } from '../state'
 import type { ColumnRole, ColumnInfo } from '../models/types'
 
-const ROLES: { key: ColumnRole; label: string }[] = [
-  { key: 'none', label: 'Skip' },
-  { key: 'frame', label: 'Frame' },
-  { key: 'metric', label: 'Metric' },
-  { key: 'label', label: 'Label' },
-  { key: 'partition', label: 'Partition' },
-]
-
 const UNIT_SUGGESTIONS = [
   'bytes', 'count', 'nanoseconds', 'microseconds', 'milliseconds', 'seconds',
   'objects', 'pages', 'requests', 'errors',
 ]
 
 function isJsonParent(col: ColumnInfo): boolean {
-  // JSON object parent: has sub-fields with jsonKey
+  if (col.isJsonArray) return true
   if (S.columns.some(c => c.source === col.name && c.jsonKey !== undefined && !c.isJsonArrayField)) {
     return col.name === col.source && !col.jsonKey
   }
-  // JSON array parent: has sub-fields with isJsonArrayField
-  if (col.isJsonArray) return true
   return false
+}
+
+/** Columns available to assign (not already assigned + not JSON parents). */
+function availableFor(role: ColumnRole): ColumnInfo[] {
+  return S.columns.filter(c => {
+    if (isJsonParent(c)) return false
+    const current = S.roles.get(c.name) ?? 'none'
+    if (current !== 'none') return false
+    if (role === 'metric' && !c.isNumeric) return false
+    return true
+  })
+}
+
+function assignedAs(role: ColumnRole): ColumnInfo[] {
+  return (role === 'frame' ? S.frameOrder : S.columns.filter(c => S.roles.get(c.name) === role).map(c => c.name))
+    .map(name => S.columns.find(c => c.name === name))
+    .filter((c): c is ColumnInfo => c !== undefined)
+}
+
+function addColumn(name: string, role: ColumnRole): void {
+  setRole(name, role)
+}
+
+function removeColumn(name: string): void {
+  setRole(name, 'none')
+}
+
+function colLabel(col: ColumnInfo): string {
+  if (col.jsonKey !== undefined) return `${col.source}.${col.jsonKey}`
+  return col.name
+}
+
+function renderAddDropdown(role: ColumnRole, label: string): m.Vnode | null {
+  const available = availableFor(role)
+  if (available.length === 0) return null
+  return m('select.add-col-select', {
+    'aria-label': label,
+    value: '',
+    onchange: (e: Event) => {
+      const val = (e.target as HTMLSelectElement).value
+      if (val) addColumn(val, role)
+    },
+  }, [
+    m('option', { value: '', disabled: true, selected: true }, `+ ${label}`),
+    ...available.map(c => m('option', { value: c.name }, colLabel(c))),
+  ])
 }
 
 export const Configure: m.Component = {
   view() {
     if (!S.data) return null
 
-    const frameColumns = S.frameOrder
-    const metricColumns = S.columns.filter(c => S.roles.get(c.name) === 'metric')
-    const hasFrames = frameColumns.length > 0
+    const frames = assignedAs('frame')
+    const metrics = assignedAs('metric')
+    const labels = assignedAs('label')
+    const partitions = assignedAs('partition')
 
     return m('div', [
-      // Column assignment
+      // Frames
       m('.card', [
-        m('.card-title', 'Assign column roles'),
-        m('.col-list', S.columns.map(col => {
-          // Skip JSON parent columns — only show their expanded sub-fields
-          if (isJsonParent(col)) return m('div', { key: `skip:${col.name}`, style: 'display:none' })
-
-          const role = S.roles.get(col.name) ?? 'none'
-
-          return m('.col-row', { key: col.name }, [
-            m('.col-role', ROLES
-              .filter(r => r.key !== 'metric' || col.isNumeric)
-              .map(r =>
-                m('button.role-btn', {
-                  class: role === r.key ? 'active' : '',
-                  onclick: () => setRole(col.name, r.key),
-                }, r.label)
-              )
-            ),
-            m('.col-name', [
-              col.jsonKey !== undefined
-                ? [m('span.json-prefix', `${col.source}.`), col.jsonKey]
-                : col.name,
-            ]),
-            m('.col-samples', col.sampleValues.join(', ') || '\u2014'),
-          ])
-        })),
+        m('.card-title-row', [
+          m('.card-title', 'Frames'),
+          renderAddDropdown('frame', 'Add frame'),
+        ]),
+        frames.length === 0
+          ? m('.empty-hint', 'Select at least one column to define the call stack.')
+          : m('.frame-order', frames.map((col, idx) => {
+              const isFirst = idx === 0
+              const isLast = idx === frames.length - 1
+              return m('.frame-item', { key: col.name }, [
+                m('.frame-idx', `${idx + 1}.`),
+                m('.frame-name', colLabel(col)),
+                frames.length > 1
+                  ? m('.frame-label', isFirst ? 'root' : isLast ? 'leaf' : '')
+                  : null,
+                col.isJsonArrayField
+                  ? m('.frame-label', `expands ${col.source}`)
+                  : null,
+                m('.frame-arrows', [
+                  m('button', {
+                    disabled: isFirst,
+                    onclick: () => moveFrame(col.name, -1),
+                    'aria-label': `Move ${col.name} up`,
+                  }, '\u25B2'),
+                  m('button', {
+                    disabled: isLast,
+                    onclick: () => moveFrame(col.name, 1),
+                    'aria-label': `Move ${col.name} down`,
+                  }, '\u25BC'),
+                ]),
+                m('button.remove-btn', {
+                  onclick: () => removeColumn(col.name),
+                  'aria-label': `Remove ${col.name}`,
+                }, '\u00D7'),
+              ])
+            })),
       ]),
 
-      // Frame order
-      hasFrames ? m('.card', [
-        m('.card-title', 'Frame order (top \u2192 root, bottom \u2192 leaf)'),
-        m('.frame-order', frameColumns.map((name, idx) => {
-          const col = S.columns.find(c => c.name === name)
-          const isFirst = idx === 0
-          const isLast = idx === frameColumns.length - 1
-
-          return m('.frame-item', { key: name }, [
-            m('.frame-idx', `${idx + 1}.`),
-            m('.frame-name', name),
-            frameColumns.length > 1
-              ? m('.frame-label', isFirst ? 'root' : isLast ? 'leaf' : '')
-              : null,
-            m('.frame-arrows', [
-              m('button', {
-                disabled: isFirst,
-                onclick: () => moveFrame(name, -1),
-                'aria-label': `Move ${name} up`,
-              }, '\u25B2'),
-              m('button', {
-                disabled: isLast,
-                onclick: () => moveFrame(name, 1),
-                'aria-label': `Move ${name} down`,
-              }, '\u25BC'),
-            ]),
-            // JSON array sub-field: show which array column it expands
-            col?.isJsonArrayField
-              ? m('.frame-label', `expands ${col.source}`)
-              : null,
-          ])
-        })),
-      ]) : null,
-
-      // Metrics & units
+      // Metrics
       m('.card', [
-        m('.card-title', metricColumns.length > 0 ? 'Metrics & units' : 'Metrics'),
+        m('.card-title-row', [
+          m('.card-title', 'Metrics'),
+          renderAddDropdown('metric', 'Add metric'),
+        ]),
         m('.metric-list', [
-          ...metricColumns.map(col =>
+          ...metrics.map(col =>
             m('.metric-item', { key: col.name }, [
-              m('.metric-name', col.name),
+              m('.metric-name', colLabel(col)),
               m('input[type=text].unit-input', {
                 'aria-label': `Unit for ${col.name}`,
                 list: 'unit-suggestions',
@@ -113,6 +130,10 @@ export const Configure: m.Component = {
                 },
                 placeholder: 'unit',
               }),
+              m('button.remove-btn', {
+                onclick: () => removeColumn(col.name),
+                'aria-label': `Remove ${col.name}`,
+              }, '\u00D7'),
             ])
           ),
           m('datalist#unit-suggestions', { key: '_datalist' },
@@ -123,6 +144,44 @@ export const Configure: m.Component = {
             m('.rows-badge', 'auto \u2014 count of input rows'),
           ]),
         ]),
+      ]),
+
+      // Labels
+      m('.card', [
+        m('.card-title-row', [
+          m('.card-title', 'Labels'),
+          renderAddDropdown('label', 'Add label'),
+        ]),
+        labels.length === 0
+          ? m('.empty-hint', 'Optional metadata attached to each sample.')
+          : m('.tag-list', labels.map(col =>
+              m('.tag-item', { key: col.name }, [
+                m('span', colLabel(col)),
+                m('button.remove-btn', {
+                  onclick: () => removeColumn(col.name),
+                  'aria-label': `Remove ${col.name}`,
+                }, '\u00D7'),
+              ])
+            )),
+      ]),
+
+      // Partition
+      m('.card', [
+        m('.card-title-row', [
+          m('.card-title', 'Partition by'),
+          renderAddDropdown('partition', 'Add partition'),
+        ]),
+        partitions.length === 0
+          ? m('.empty-hint', 'Optional. Splits output into separate profiles.')
+          : m('.tag-list', partitions.map(col =>
+              m('.tag-item', { key: col.name }, [
+                m('span', colLabel(col)),
+                m('button.remove-btn', {
+                  onclick: () => removeColumn(col.name),
+                  'aria-label': `Remove ${col.name}`,
+                }, '\u00D7'),
+              ])
+            )),
       ]),
 
       // Generate
@@ -137,13 +196,12 @@ export const Configure: m.Component = {
               S.progress ? ` ${S.progress.message}` : ' Generating\u2026',
             ])
           : m('button.btn.primary', {
-              disabled: !hasFrames,
+              disabled: frames.length === 0,
               onclick: generate,
-              title: hasFrames ? '' : 'Select at least one frame column',
+              title: frames.length === 0 ? 'Add at least one frame column' : '',
             }, 'Generate profiles'),
       ]),
 
-      // Progress bar
       S.generating && S.progress ? m('.progress-bar', [
         m('.progress-fill', { style: `width: ${Math.round(S.progress.pct)}%` }),
       ]) : null,

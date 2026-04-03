@@ -245,50 +245,57 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 .preview-table tr:last-child td { border-bottom: none; }
 .preview-table .truncated { color: var(--text-tertiary); font-style: italic; }
 
-/* --- Column config --- */
-.col-list { display: flex; flex-direction: column; gap: 3px; }
-
-.col-row {
-  display: grid;
-  grid-template-columns: auto 160px 1fr;
-  gap: 10px;
-  align-items: center;
-  padding: 5px 10px;
+/* --- Configure: add column dropdown --- */
+.add-col-select {
+  padding: 3px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  font-size: 0.8rem;
-}
-.col-row:hover { background: var(--bg-hover); }
-.col-row.json-parent {
-  background: var(--bg-accent);
-  border-style: dashed;
-  grid-template-columns: 1fr;
-  padding: 4px 10px;
-  font-size: 0.77rem;
+  background: var(--bg-input);
   color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
-.col-name {
+/* --- Configure: empty state hint --- */
+.empty-hint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  padding: 4px 0;
+}
+
+/* --- Configure: tag list (labels, partitions) --- */
+.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.8rem;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--bg-card);
 }
-.col-name .json-prefix { color: var(--text-tertiary); }
 
-.col-samples {
-  font-family: var(--mono);
-  font-size: 0.72rem;
+/* --- Configure: remove button --- */
+.remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: color var(--transition);
 }
-
-.col-role { display: flex; gap: 2px; }
+.remove-btn:hover { color: var(--error); }
 
 .role-btn {
   padding: 2px 7px;

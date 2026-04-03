@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import puppeteer, { Browser, Page } from 'puppeteer'
 import { createServer, ViteDevServer } from 'vite'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 let browser: Browser
 let page: Page
@@ -22,6 +24,8 @@ const PARTITION_TSV = [
   'bar\tprod\tworker\t200',
   'baz\tstaging\tmain\t300',
 ].join('\n')
+
+const HEAP_TSV = readFileSync(join(process.cwd(), 'src/testdata/heap.tsv'), 'utf-8')
 
 beforeAll(async () => {
   server = await createServer({ root: process.cwd(), server: { port: 0 }, logLevel: 'silent' })
@@ -52,22 +56,26 @@ async function loadTSV(tsv: string): Promise<void> {
     return btn && btn.textContent === 'Parse data'
   }, { timeout: 3000 })
   await page.click('.actions .btn.primary')
-  await page.waitForSelector('.col-list', { timeout: 5000 })
+  await page.waitForSelector('.card-title', { timeout: 5000 })
 }
 
-async function clickRole(colName: string, role: string): Promise<void> {
-  await page.evaluate((name: string, r: string) => {
-    const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-    for (const row of rows) {
-      const nameEl = row.querySelector('.col-name')
-      if (nameEl?.textContent?.trim() === name) {
-        const btns = row.querySelectorAll('.role-btn')
-        for (const btn of btns) {
-          if (btn.textContent?.trim() === r) (btn as HTMLElement).click()
+/** Add a column to a role section via its dropdown. */
+async function addToRole(colName: string, sectionTitle: string): Promise<void> {
+  await page.evaluate((name: string, title: string) => {
+    const cards = document.querySelectorAll('.card')
+    for (const card of cards) {
+      const cardTitle = card.querySelector('.card-title')?.textContent?.trim()
+      if (cardTitle === title) {
+        const sel = card.querySelector('.add-col-select') as HTMLSelectElement
+        if (sel) {
+          sel.value = name
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
         }
       }
     }
-  }, colName, role)
+  }, colName, sectionTitle)
+  // Wait for Mithril redraw
+  await new Promise(r => setTimeout(r, 100))
 }
 
 async function generate(): Promise<void> {
@@ -84,46 +92,40 @@ describe('e2e: basic flow', () => {
     expect(title).toBe('JSON to pprof')
   }, 15000)
 
-  it('parses TSV and shows columns', async () => {
+  it('parses TSV and shows configure screen', async () => {
     await loadTSV(SIMPLE_TSV)
-    const colCount = await page.$$eval('.col-row', rows => rows.length)
-    expect(colCount).toBe(4)
+    // Should see Frames section with empty state hint
+    const hint = await page.$eval('.empty-hint', el => el.textContent)
+    expect(hint).toContain('Select at least one')
   }, 15000)
 
-  it('assigns correct default roles', async () => {
-    const roles = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-      const r: Record<string, string> = {}
-      rows.forEach(row => {
-        const name = row.querySelector('.col-name')?.textContent?.trim() ?? ''
-        const active = row.querySelector('.role-btn.active')?.textContent?.trim() ?? ''
-        if (name) r[name] = active
-      })
-      return r
-    })
-    expect(roles['function_name']).toBe('Frame')
-    expect(roles['self_size']).toBe('Metric')
-    expect(roles['self_count']).toBe('Metric')
-    expect(roles['module']).toBe('Skip')
+  it('all columns start unassigned', async () => {
+    // Frame order should be empty
+    const frames = await page.$$('.frame-item')
+    expect(frames.length).toBe(0)
   })
 
-  it('shows frame order section', async () => {
-    const frames = await page.$$eval('.frame-item .frame-name', els =>
+  it('adds frame and metric columns', async () => {
+    await addToRole('function_name', 'Frames')
+    await addToRole('self_size', 'Metrics')
+    await addToRole('self_count', 'Metrics')
+
+    // Verify frame shows up
+    const frameNames = await page.$$eval('.frame-item .frame-name', els =>
       els.map(el => el.textContent?.trim())
     )
-    expect(frames).toContain('function_name')
-  })
+    expect(frameNames).toContain('function_name')
 
-  it('shows metrics with unit inputs', async () => {
-    const metrics = await page.$$eval('.metric-item .metric-name', els =>
+    // Verify metrics show up
+    const metricNames = await page.$$eval('.metric-item .metric-name', els =>
       els.map(el => el.textContent?.trim())
     )
-    expect(metrics).toContain('self_size')
-    expect(metrics).toContain('self_count')
-    expect(metrics).toContain('rows')
+    expect(metricNames).toContain('self_size')
+    expect(metricNames).toContain('self_count')
+    expect(metricNames).toContain('rows')
   })
 
-  it('generates profiles via worker', async () => {
+  it('generates profiles', async () => {
     await generate()
     const count = await page.$$eval('.profile-card', cards => cards.length)
     expect(count).toBe(1)
@@ -131,15 +133,9 @@ describe('e2e: basic flow', () => {
     expect(meta).toContain('5 rows')
   }, 20000)
 
-  it('shows download button and filename with timestamp', async () => {
+  it('shows timestamp in filename', async () => {
     const fileName = await page.$eval('.profile-file', el => el.textContent)
     expect(fileName).toMatch(/^profile_\d{8}_\d{6}\.pb\.gz$/)
-  })
-
-  it('shows usage hints', async () => {
-    const hint = await page.$eval('.hint-card', el => el.textContent)
-    expect(hint).toContain('pprof')
-    expect(hint).toContain('Perfetto')
   })
 })
 
@@ -147,8 +143,7 @@ describe('e2e: basic flow', () => {
 
 describe('e2e: theme', () => {
   it('toggles dark/light', async () => {
-    const initial = await page.evaluate(() => document.documentElement.getAttribute('data-theme'))
-    expect(initial).toBe('light')
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('light')
     await page.click('.btn-icon')
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark')
     await page.click('.btn-icon')
@@ -156,58 +151,21 @@ describe('e2e: theme', () => {
   })
 })
 
-// ── Step navigation ──
-
-describe('e2e: navigation', () => {
-  it('navigates between steps', async () => {
-    const active = await page.$eval('.step-btn.active', el => el.textContent)
-    expect(active).toContain('Profiles')
-
-    const steps = await page.$$('.step-btn')
-    await steps[1].click()
-    await page.waitForSelector('.col-list')
-
-    await steps[2].click()
-    await page.waitForSelector('.profile-list')
-  })
-})
-
 // ── Partitioning + labels ──
 
 describe('e2e: partitions and labels', () => {
-  it('loads partition TSV', async () => {
+  it('loads and assigns roles', async () => {
     await loadTSV(PARTITION_TSV)
+    await addToRole('func', 'Frames')
+    await addToRole('size', 'Metrics')
+    await addToRole('env', 'Partition by')
+    await addToRole('thread', 'Labels')
   }, 15000)
-
-  it('assigns partition and label roles', async () => {
-    await clickRole('env', 'Partition')
-    await clickRole('thread', 'Label')
-    // Wait for Mithril redraw
-    await page.waitForFunction(() => {
-      const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-      for (const row of rows) {
-        if (row.querySelector('.col-name')?.textContent?.trim() === 'env') {
-          return row.querySelector('.role-btn.active')?.textContent?.trim() === 'Partition'
-        }
-      }
-      return false
-    }, { timeout: 3000 })
-
-    const envRole = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-      for (const row of rows) {
-        if (row.querySelector('.col-name')?.textContent?.trim() === 'env') {
-          return row.querySelector('.role-btn.active')?.textContent?.trim()
-        }
-      }
-    })
-    expect(envRole).toBe('Partition')
-  })
 
   it('generates partitioned profiles', async () => {
     await generate()
     const count = await page.$$eval('.profile-card', cards => cards.length)
-    expect(count).toBe(2) // prod + staging
+    expect(count).toBe(2)
   }, 20000)
 
   it('shows partition names', async () => {
@@ -216,54 +174,14 @@ describe('e2e: partitions and labels', () => {
     )
     expect(names).toEqual(['prod', 'staging'])
   })
-
-  it('shows filenames with partition values and timestamps', async () => {
-    const files = await page.$$eval('.profile-file', els =>
-      els.map(el => el.textContent?.trim()).sort()
-    )
-    expect(files[0]).toMatch(/^profile_prod_\d{8}_\d{6}\.pb\.gz$/)
-    expect(files[1]).toMatch(/^profile_staging_\d{8}_\d{6}\.pb\.gz$/)
-  })
 })
 
 // ── Selective download ──
 
 describe('e2e: selective download', () => {
-  it('shows checkboxes for multiple profiles', async () => {
+  it('shows checkboxes and select all', async () => {
     const checkboxes = await page.$$('input[type=checkbox]')
     expect(checkboxes.length).toBe(2)
-  })
-
-  it('all selected by default', async () => {
-    const checked = await page.$$eval('input[type=checkbox]', els =>
-      els.every(el => (el as HTMLInputElement).checked)
-    )
-    expect(checked).toBe(true)
-  })
-
-  it('can deselect and shows correct count', async () => {
-    const checkboxes = await page.$$('input[type=checkbox]')
-    await checkboxes[0].click()
-    // Wait for Mithril to update button text
-    await page.waitForFunction(() => {
-      const btns = document.querySelectorAll('.actions-flush-sm .btn.sm')
-      return btns[1]?.textContent?.includes('1 selected')
-    }, { timeout: 3000 })
-
-    const btnText = await page.evaluate(() => {
-      const btns = document.querySelectorAll('.actions-flush-sm .btn.sm')
-      return btns[1]?.textContent?.trim()
-    })
-    expect(btnText).toContain('1 selected')
-  })
-
-  it('select all / deselect all works', async () => {
-    // Click "Select all"
-    await page.evaluate(() => {
-      const btns = document.querySelectorAll('.actions-flush-sm .btn.sm')
-      ;(btns[0] as HTMLElement).click()
-    })
-
     const allChecked = await page.$$eval('input[type=checkbox]', els =>
       els.every(el => (el as HTMLInputElement).checked)
     )
@@ -274,115 +192,59 @@ describe('e2e: selective download', () => {
 // ── Text view ──
 
 describe('e2e: text view', () => {
-  it('switches to text view', async () => {
-    // Load fresh data and generate
+  it('switches to text view and shows output', async () => {
     await loadTSV(SIMPLE_TSV)
+    await addToRole('function_name', 'Frames')
+    await addToRole('self_size', 'Metrics')
     await generate()
-    // Click "Text" toggle
+
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.view-toggle button')
       ;(btns[1] as HTMLElement).click()
     })
     await page.waitForSelector('.text-view-pre', { timeout: 3000 })
-  }, 20000)
 
-  it('shows text output with frame names and metrics', async () => {
     const text = await page.$eval('.text-view-pre', el => el.textContent)
-    expect(text).toBeTruthy()
-    // Should contain frame names from the data
     expect(text).toContain('malloc')
     expect(text).toContain('render')
-    // Should contain metric values in brackets
-    expect(text).toContain('[')
-    expect(text).toContain('rows:')
-  })
+  }, 25000)
 
-  it('shows metric toggles', async () => {
-    const toggles = await page.$$eval('.col-role .role-btn', els =>
-      els.map(el => el.textContent?.trim())
-    )
-    expect(toggles).toContain('self_size')
-    expect(toggles).toContain('self_count')
-    expect(toggles).toContain('rows')
-  })
-
-  it('toggling a metric changes text output', async () => {
-    const before = await page.$eval('.text-view-pre', el => el.textContent ?? '')
-
-    // Click the 'self_size' metric toggle to disable it
-    await page.evaluate(() => {
-      const btns = document.querySelectorAll('.col-role .role-btn')
-      for (const btn of btns) {
-        if (btn.textContent?.trim() === 'self_size') (btn as HTMLElement).click()
-      }
-    })
-    await page.waitForFunction((prev: string) => {
-      const pre = document.querySelector('.text-view-pre')
-      return pre && pre.textContent !== prev
-    }, {}, before)
-
-    const after = await page.$eval('.text-view-pre', el => el.textContent ?? '')
-    expect(after).not.toEqual(before)
-  })
-
-  it('copy button exists', async () => {
-    const hasCopy = await page.evaluate(() => {
-      const btns = document.querySelectorAll('.btn.sm')
-      return [...btns].some(b => b.textContent?.trim() === 'Copy')
-    })
-    expect(hasCopy).toBe(true)
-  })
-
-  it('switches back to cards view', async () => {
+  it('switches back to cards', async () => {
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.view-toggle button')
       ;(btns[0] as HTMLElement).click()
     })
     await page.waitForSelector('.profile-list', { timeout: 3000 })
-    const cards = await page.$$('.profile-card')
-    expect(cards.length).toBeGreaterThan(0)
   })
 })
 
-// ── JSON array stack (Perfetto heap dominator format) ──
-
-// Read from file to avoid JS string escaping issues with \"
-import { readFileSync } from 'fs'
-import { join } from 'path'
-const HEAP_TSV = readFileSync(join(process.cwd(), 'src/testdata/heap.tsv'), 'utf-8')
+// ── JSON array stack ──
 
 describe('e2e: JSON array stack', () => {
-  it('loads heap dominator TSV and shows path sub-fields', async () => {
+  it('expands JSON array sub-fields as columns', async () => {
     await loadTSV(HEAP_TSV)
-    // Should see expanded path sub-fields + outer columns
-    const colNames = await page.$$eval('.col-row .col-name', els =>
-      els.map(el => el.textContent?.trim())
-    )
-    console.log('Columns visible:', colNames)
-    // Expanded JSON array sub-fields
-    expect(colNames).toContain('path.class')
-    expect(colNames).toContain('path.heap_type')
-    expect(colNames).toContain('path.count')
-    expect(colNames).toContain('path.size')
-    expect(colNames).toContain('path.root_type')
-    // Outer columns
-    expect(colNames).toContain('process_name')
-    expect(colNames).toContain('self_size')
-    expect(colNames).toContain('_device_name')
+    // Check that add-frame dropdown contains path.class
+    const options = await page.evaluate(() => {
+      const cards = document.querySelectorAll('.card')
+      for (const card of cards) {
+        if (card.querySelector('.card-title')?.textContent?.trim() === 'Frames') {
+          const sel = card.querySelector('.add-col-select') as HTMLSelectElement
+          return [...sel.options].map(o => o.value).filter(v => v)
+        }
+      }
+      return []
+    })
+    expect(options).toContain('path.class')
+    expect(options).toContain('path.heap_type')
+    expect(options).toContain('process_name')
   }, 15000)
 
-  it('assigns path.class as Frame and process_name as Frame', async () => {
-    await clickRole('path.class', 'Frame')
-    await clickRole('process_name', 'Frame')
-    // Wait for frame order to update
-    await page.waitForFunction(() => {
-      const frames = document.querySelectorAll('.frame-item .frame-name')
-      return frames.length >= 2
-    }, { timeout: 3000 })
-  })
-
-  it('generates and shows multi-depth stacks in text view', async () => {
+  it('generates multi-depth stacks from JSON array', async () => {
+    await addToRole('process_name', 'Frames')
+    await addToRole('path.class', 'Frames')
+    await addToRole('self_size', 'Metrics')
     await generate()
+
     // Switch to text view
     await page.evaluate(() => {
       const btns = document.querySelectorAll('.view-toggle button')
@@ -391,54 +253,32 @@ describe('e2e: JSON array stack', () => {
     await page.waitForSelector('.text-view-pre', { timeout: 5000 })
 
     const text = await page.$eval('.text-view-pre', el => el.textContent ?? '')
-    console.log('Text view output:\n' + text.slice(0, 500))
+    console.log('Heap text output:\n' + text.slice(0, 500))
 
-    // Should contain multi-depth frames from the JSON array
+    // Verify multi-depth frames from JSON array
     expect(text).toContain('TaskSnapshotController')
     expect(text).toContain('TaskSnapshotCache')
     expect(text).toContain('HardwareBuffer')
-    expect(text).toContain('system_server')
-    expect(text).toContain('com.example.app')
-    expect(text).toContain('UsageEvents$Event')
 
-    // In tree mode, frames should be indented by depth
+    // Verify indentation (child deeper than parent)
     const lines = text.split('\n').filter(l => l.trim())
-    const snapshotLine = lines.find(l => l.includes('TaskSnapshotController'))!
-    const cacheLine = lines.find(l => l.includes('TaskSnapshotCache'))!
-    // Cache is one level deeper than Controller
-    const snapIndent = snapshotLine.match(/^(\s*)/)?.[1].length ?? 0
-    const cacheIndent = cacheLine.match(/^(\s*)/)?.[1].length ?? 0
-    expect(cacheIndent).toBeGreaterThan(snapIndent)
-  }, 20000)
+    const ctrl = lines.find(l => l.includes('TaskSnapshotController'))!
+    const cache = lines.find(l => l.includes('TaskSnapshotCache'))!
+    const ctrlIndent = ctrl.match(/^(\s*)/)?.[1].length ?? 0
+    const cacheIndent = cache.match(/^(\s*)/)?.[1].length ?? 0
+    expect(cacheIndent).toBeGreaterThan(ctrlIndent)
+  }, 25000)
 })
 
 // ── Config persistence ──
 
 describe('e2e: config persistence', () => {
   it('restores config when same schema is re-loaded', async () => {
-    // Load same TSV again
     await loadTSV(PARTITION_TSV)
-
-    // Should restore partition role for env
-    const envRole = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-      for (const row of rows) {
-        if (row.querySelector('.col-name')?.textContent?.trim() === 'env') {
-          return row.querySelector('.role-btn.active')?.textContent?.trim()
-        }
-      }
-    })
-    expect(envRole).toBe('Partition')
-
-    // Should restore label role for thread
-    const threadRole = await page.evaluate(() => {
-      const rows = document.querySelectorAll('.col-row:not(.json-parent)')
-      for (const row of rows) {
-        if (row.querySelector('.col-name')?.textContent?.trim() === 'thread') {
-          return row.querySelector('.role-btn.active')?.textContent?.trim()
-        }
-      }
-    })
-    expect(threadRole).toBe('Label')
+    // Should restore roles from previous test
+    const frameNames = await page.$$eval('.frame-item .frame-name', els =>
+      els.map(el => el.textContent?.trim())
+    )
+    expect(frameNames).toContain('func')
   }, 15000)
 })

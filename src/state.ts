@@ -1,6 +1,6 @@
 import m from 'mithril'
 import { ColumnRole, ProfileConfig, GeneratedProfile, AppStep } from './models/types'
-import { parseTSV, analyzeColumns, suggestDefaults } from './models/tsv'
+import { parseTSV, analyzeColumns } from './models/tsv'
 import { serializeConfig, deserializeConfig } from './models/configWire'
 import { generateProfilesAsync, GenerateProgress } from './generateAsync'
 import type { SerializedConfig } from './models/configWire'
@@ -167,17 +167,10 @@ export function loadData(text: string, fileName: string): void {
         if (!S.roles.has(col.name)) S.roles.set(col.name, 'none')
       }
     } else {
-      // Apply smart defaults
-      const defaults = suggestDefaults(S.columns)
-      S.roles = defaults.roles
-      S.frameOrder = defaults.frameOrder
+      // Start clean — all columns as 'none', user picks roles
+      S.roles = new Map(S.columns.map(c => [c.name, 'none' as ColumnRole]))
+      S.frameOrder = []
       S.metricUnits = new Map()
-
-      for (const col of S.columns) {
-        if (defaults.roles.get(col.name) === 'metric') {
-          S.metricUnits.set(col.name, inferUnit(col.name))
-        }
-      }
     }
 
     S.step = 'configure'
@@ -199,7 +192,7 @@ export function setRole(columnName: string, role: ColumnRole): void {
   }
 
   if (role === 'metric' && !S.metricUnits.has(columnName)) {
-    S.metricUnits.set(columnName, 'count')
+    S.metricUnits.set(columnName, inferUnit(columnName))
   }
 }
 
