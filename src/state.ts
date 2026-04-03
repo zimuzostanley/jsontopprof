@@ -33,7 +33,6 @@ function saveConfig(headers: string[], state: State): void {
       ...serializeConfig({
         roles: state.roles,
         frameOrder: state.frameOrder,
-        jsonArrayLabelKey: state.jsonArrayLabelKey,
         metricUnits: state.metricUnits,
       }),
       timestamp: Date.now(),
@@ -75,7 +74,6 @@ export interface State {
   columns: ColumnInfo[]
   roles: Map<string, ColumnRole>
   frameOrder: string[]
-  jsonArrayLabelKey: Map<string, string>
   metricUnits: Map<string, string>
   profiles: GeneratedProfile[]
   generating: boolean
@@ -107,7 +105,7 @@ export const S: State = {
   columns: [],
   roles: new Map(),
   frameOrder: [],
-  jsonArrayLabelKey: new Map(),
+
   metricUnits: new Map(),
   profiles: [],
   generating: false,
@@ -162,9 +160,6 @@ export function loadData(text: string, fileName: string): void {
       S.roles = restored.roles
       const colNames = new Set(S.columns.map(c => c.name))
       S.frameOrder = restored.frameOrder.filter(n => colNames.has(n))
-      S.jsonArrayLabelKey = new Map(
-        [...restored.jsonArrayLabelKey].filter(([n]) => colNames.has(n))
-      )
       S.metricUnits = new Map(
         [...restored.metricUnits].filter(([n]) => colNames.has(n))
       )
@@ -176,15 +171,11 @@ export function loadData(text: string, fileName: string): void {
       const defaults = suggestDefaults(S.columns)
       S.roles = defaults.roles
       S.frameOrder = defaults.frameOrder
-      S.jsonArrayLabelKey = new Map()
       S.metricUnits = new Map()
 
       for (const col of S.columns) {
         if (defaults.roles.get(col.name) === 'metric') {
           S.metricUnits.set(col.name, inferUnit(col.name))
-        }
-        if (col.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0) {
-          S.jsonArrayLabelKey.set(col.name, col.jsonArrayKeys[0])
         }
       }
     }
@@ -234,7 +225,6 @@ export async function generate(): Promise<void> {
     const config: ProfileConfig = {
       roles: S.roles,
       frameOrder: S.frameOrder,
-      jsonArrayLabelKey: S.jsonArrayLabelKey,
       metricUnits: S.metricUnits,
     }
     S.profiles = await generateProfilesAsync(S.data, S.columns, config, (p) => {
@@ -271,7 +261,6 @@ export function reset(): void {
   S.columns = []
   S.roles = new Map()
   S.frameOrder = []
-  S.jsonArrayLabelKey = new Map()
   S.metricUnits = new Map()
   S.profiles = []
   S.generating = false

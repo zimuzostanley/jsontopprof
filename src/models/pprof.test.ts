@@ -160,7 +160,7 @@ describe('buildStack', () => {
       { name: 'module', source: 'module', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ module: 'libc', func: 'malloc' }, ['module', 'func'], cols, new Map()))
+    expect(buildStack({ module: 'libc', func: 'malloc' }, ['module', 'func'], cols))
       .toEqual(['libc', 'malloc'])
   })
 
@@ -169,15 +169,15 @@ describe('buildStack', () => {
       { name: 'meta.region', source: 'meta', jsonKey: 'region', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ meta: '{"region":"us"}', func: 'foo' }, ['meta.region', 'func'], cols, new Map()))
+    expect(buildStack({ meta: '{"region":"us"}', func: 'foo' }, ['meta.region', 'func'], cols))
       .toEqual(['us', 'foo'])
   })
 
-  it('expands JSON arrays', () => {
+  it('expands JSON array object sub-field as frames', () => {
     const cols: ColumnInfo[] = [
-      { name: 'path', source: 'path', isJsonArray: true, jsonArrayKeys: ['class'], sampleValues: [], isNumeric: false },
+      { name: 'path.class', source: 'path', jsonKey: 'class', isJsonArrayField: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ path: '[{"class":"Foo"},{"class":"Bar"}]' }, ['path'], cols, new Map([['path', 'class']])))
+    expect(buildStack({ path: '[{"class":"Foo"},{"class":"Bar"}]' }, ['path.class'], cols))
       .toEqual(['Foo', 'Bar'])
   })
 
@@ -185,7 +185,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'tags', source: 'tags', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ tags: '["a","b","c"]' }, ['tags'], cols, new Map()))
+    expect(buildStack({ tags: '["a","b","c"]' }, ['tags'], cols))
       .toEqual(['a', 'b', 'c'])
   })
 
@@ -193,7 +193,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'arr', source: 'arr', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ arr: '[null, "x"]' }, ['arr'], cols, new Map()))
+    expect(buildStack({ arr: '[null, "x"]' }, ['arr'], cols))
       .toEqual(['(null)', 'x'])
   })
 
@@ -201,11 +201,11 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ func: '' }, ['func'], cols, new Map())).toEqual(['(empty)'])
+    expect(buildStack({ func: '' }, ['func'], cols)).toEqual(['(empty)'])
   })
 
   it('shows (no frames) when no frame columns', () => {
-    expect(buildStack({}, [], [], new Map())).toEqual(['(no frames)'])
+    expect(buildStack({}, [], [])).toEqual(['(no frames)'])
   })
 
   it('handles malformed JSON gracefully', () => {
@@ -213,13 +213,13 @@ describe('buildStack', () => {
       { name: 'path', source: 'path', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
     // Non-JSON is used as literal frame value
-    expect(buildStack({ path: 'not-json' }, ['path'], cols, new Map()))
+    expect(buildStack({ path: 'not-json' }, ['path'], cols))
       .toEqual(['not-json'])
     // Truly broken JSON (starts with [ but invalid) falls back to raw
-    expect(buildStack({ path: '[broken' }, ['path'], cols, new Map()))
+    expect(buildStack({ path: '[broken' }, ['path'], cols))
       .toEqual(['[broken'])
     // Empty string gets placeholder
-    expect(buildStack({ path: '' }, ['path'], cols, new Map()))
+    expect(buildStack({ path: '' }, ['path'], cols))
       .toEqual(['(parse error)'])
   })
 
@@ -227,7 +227,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'meta.missing', source: 'meta', jsonKey: 'missing', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ meta: '{"other":1}' }, ['meta.missing'], cols, new Map()))
+    expect(buildStack({ meta: '{"other":1}' }, ['meta.missing'], cols))
       .toEqual(['(empty)'])
   })
 })
@@ -287,7 +287,6 @@ describe('generateProfiles', () => {
     const config: ProfileConfig = {
       roles: new Map([['name', 'none']]),
       frameOrder: [],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     }
     await expect(generateProfiles(data, cols, config)).rejects.toThrow('At least one frame')
@@ -301,7 +300,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     })
     expect(profiles).toHaveLength(1)
@@ -318,12 +316,11 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['process_name', 'frame'],
-        ['path', 'frame'],
+        ['path.class', 'frame'],
         ['self_size', 'metric'],
         ['self_count', 'metric'],
       ]),
-      frameOrder: ['process_name', 'path'],
-      jsonArrayLabelKey: new Map([['path', 'class']]),
+      frameOrder: ['process_name', 'path.class'],
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     })
     expect(profiles).toHaveLength(1)
@@ -341,7 +338,6 @@ describe('generateProfiles', () => {
         ['metadata.region', 'partition'],
       ]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles.length).toBe(3)
@@ -355,7 +351,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['size', 'metric']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -369,7 +364,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles).toHaveLength(1)
@@ -384,12 +378,11 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['name', 'frame'],
-        ['path', 'frame'],
+        ['path.frame', 'frame'],
         ['size', 'metric'],
         ['duration_ns', 'metric'],
       ]),
-      frameOrder: ['name', 'path'],
-      jsonArrayLabelKey: new Map([['path', 'frame']]),
+      frameOrder: ['name', 'path.frame'],
       metricUnits: new Map([['size', 'bytes'], ['duration_ns', 'nanoseconds']]),
     })
     expect(profiles).toHaveLength(1)
@@ -404,7 +397,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['value', 'metric']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['value', 'count']]),
     })
     expect(profiles).toHaveLength(1)
@@ -424,7 +416,6 @@ describe('generateProfiles', () => {
         ['call_count', 'metric'],
       ]),
       frameOrder: ['function'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['latency_ms', 'milliseconds'], ['call_count', 'count']]),
     })
     expect(profiles.length).toBe(4)
@@ -439,7 +430,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     })
     expect(profiles).toHaveLength(1)
@@ -453,7 +443,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['module', 'frame'], ['func', 'frame'], ['size', 'metric']]),
       frameOrder: ['module', 'func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -483,7 +472,6 @@ describe('generateProfiles', () => {
       const profiles = await generateProfiles(data, cols, {
         roles: defaults.roles,
         frameOrder: defaults.frameOrder,
-        jsonArrayLabelKey: new Map(),
         metricUnits: new Map(),
       })
       expect(profiles.length).toBeGreaterThan(0)
@@ -501,7 +489,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['env', 'partition']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles.length).toBe(2)
@@ -518,7 +505,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['size', 'metric']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -533,7 +519,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['size', 'metric']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -547,7 +532,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['func', 'frame'], ['thread', 'label'], ['size', 'metric']]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -563,7 +547,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['func', 'frame'], ['pid', 'label'], ['size', 'metric']]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -577,7 +560,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['func', 'frame'], ['thread', 'label'], ['pid', 'label'], ['size', 'metric']]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
     expect(profiles).toHaveLength(1)
@@ -605,7 +587,6 @@ describe('generateProfiles', () => {
         ['count', 'metric'],
       ]),
       frameOrder: ['module', 'func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes'], ['count', 'count']]),
     })
     // 2 envs = 2 profiles
@@ -626,7 +607,6 @@ describe('generateProfiles', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles[0].fileName).toMatch(/^profile_\d{8}_\d{6}\.pb\.gz$/)

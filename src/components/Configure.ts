@@ -1,6 +1,6 @@
 import m from 'mithril'
 import { S, setRole, moveFrame, generate } from '../state'
-import { ColumnRole } from '../models/types'
+import type { ColumnRole, ColumnInfo } from '../models/types'
 
 const ROLES: { key: ColumnRole; label: string }[] = [
   { key: 'none', label: 'Skip' },
@@ -15,9 +15,14 @@ const UNIT_SUGGESTIONS = [
   'objects', 'pages', 'requests', 'errors',
 ]
 
-function isJsonParent(colName: string): boolean {
-  return S.columns.some(c => c.source === colName && c.jsonKey !== undefined)
-    && S.columns.some(c => c.name === colName && c.source === colName && !c.jsonKey)
+function isJsonParent(col: ColumnInfo): boolean {
+  // JSON object parent: has sub-fields with jsonKey
+  if (S.columns.some(c => c.source === col.name && c.jsonKey !== undefined && !c.isJsonArrayField)) {
+    return col.name === col.source && !col.jsonKey
+  }
+  // JSON array parent: has sub-fields with isJsonArrayField
+  if (col.isJsonArray) return true
+  return false
 }
 
 export const Configure: m.Component = {
@@ -34,10 +39,11 @@ export const Configure: m.Component = {
         m('.card-title', 'Assign column roles'),
         m('.col-list', S.columns.map(col => {
           // JSON parent columns — informational only, not assignable
-          if (col.source === col.name && !col.jsonKey && isJsonParent(col.name)) {
+          if (isJsonParent(col)) {
+            const kind = col.isJsonArray ? 'JSON array' : 'JSON object'
             return m('.col-row.json-parent', { key: `parent:${col.name}` }, [
               m('span', `${col.name} `),
-              m('span', { style: 'font-style: italic;' }, '(JSON object \u2014 sub-fields below)'),
+              m('span', { style: 'font-style: italic;' }, `(${kind} \u2014 sub-fields below)`),
             ])
           }
 
@@ -56,9 +62,7 @@ export const Configure: m.Component = {
             m('.col-name', [
               col.jsonKey !== undefined
                 ? [m('span.json-prefix', `${col.source}.`), col.jsonKey]
-                : col.isJsonArray
-                  ? [col.name, ' ', m('span.json-prefix', '[array]')]
-                  : col.name,
+                : col.name,
             ]),
             m('.col-samples', col.sampleValues.join(', ') || '\u2014'),
           ])
@@ -91,18 +95,9 @@ export const Configure: m.Component = {
                 'aria-label': `Move ${name} down`,
               }, '\u25BC'),
             ]),
-            // JSON array: label key selector (only place it appears)
-            col?.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0
-              ? m('.json-array-config', [
-                  'Label key: ',
-                  m('select', {
-                    'aria-label': `Label key for ${name}`,
-                    value: S.jsonArrayLabelKey.get(name) ?? col.jsonArrayKeys[0],
-                    onchange: (e: Event) => {
-                      S.jsonArrayLabelKey.set(name, (e.target as HTMLSelectElement).value)
-                    },
-                  }, col.jsonArrayKeys.map(k => m('option', { value: k }, k))),
-                ])
+            // JSON array sub-field: show which array column it expands
+            col?.isJsonArrayField
+              ? m('.frame-label', `expands ${col.source}`)
               : null,
           ])
         })),

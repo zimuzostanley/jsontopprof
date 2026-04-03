@@ -29,7 +29,6 @@ describe('all 5 roles combined', () => {
         ['notes', 'none'],
       ]),
       frameOrder: ['module', 'func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes'], ['count', 'objects']]),
     }
   }
@@ -124,7 +123,6 @@ describe('labels without metrics', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['func', 'frame'], ['thread', 'label']]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
 
@@ -151,7 +149,6 @@ describe('partition with labels from JSON sub-fields', () => {
         ['meta.owner', 'label'],
       ]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
 
@@ -170,14 +167,12 @@ describe('frame order matters', () => {
     const profileAB = await generateProfiles(data, cols, {
       roles: new Map([['a', 'frame'], ['b', 'frame'], ['size', 'metric']]),
       frameOrder: ['a', 'b'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
 
     const profileBA = await generateProfiles(data, cols, {
       roles: new Map([['a', 'frame'], ['b', 'frame'], ['size', 'metric']]),
       frameOrder: ['b', 'a'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     })
 
@@ -211,41 +206,42 @@ describe('JSON array as frame stack with outer columns', () => {
     expect(path[0].class).toBe('android.app.ActivityThread')
   })
 
-  it('detects JSON array column with object keys', () => {
+  it('detects JSON array column and expands sub-fields', () => {
     const data = parseTSV(perfettoStyleTSV())
     const cols = analyzeColumns(data)
+    // Parent column
     const pathCol = cols.find(c => c.name === 'path')
     expect(pathCol?.isJsonArray).toBe(true)
-    expect(pathCol?.jsonArrayKeys).toContain('class')
-    expect(pathCol?.jsonArrayKeys).toContain('heap_type')
+    // Sub-fields expanded
+    const classCol = cols.find(c => c.name === 'path.class')
+    expect(classCol?.isJsonArrayField).toBe(true)
+    expect(classCol?.jsonKey).toBe('class')
+    const heapCol = cols.find(c => c.name === 'path.heap_type')
+    expect(heapCol?.isJsonArrayField).toBe(true)
   })
 
-  it('generates profile with outer column as root frame + JSON array as stack', async () => {
+  it('generates profile with outer column as root frame + JSON array sub-field as stack', async () => {
     const data = parseTSV(perfettoStyleTSV())
     const cols = analyzeColumns(data)
 
     const profiles = await generateProfiles(data, cols, {
       roles: new Map<string, ColumnRole>([
         ['process_name', 'frame'],
-        ['path', 'frame'],
+        ['path.class', 'frame'],
         ['self_size', 'metric'],
         ['self_count', 'metric'],
       ]),
-      frameOrder: ['process_name', 'path'],
-      jsonArrayLabelKey: new Map([['path', 'class']]),
+      frameOrder: ['process_name', 'path.class'],
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'objects']]),
     })
 
     expect(profiles).toHaveLength(1)
     expect(profiles[0].rowCount).toBe(3)
-    // 3 unique stacks (all different leaf frames)
     expect(profiles[0].sampleCount).toBe(3)
-    expect(profiles[0].data[0]).toBe(0x1f) // gzip
+    expect(profiles[0].data[0]).toBe(0x1f)
 
-    // Text samples should show the full stack
     const ts = profiles[0].textSamples
     expect(ts.length).toBe(3)
-    // First sample stack: system_server -> ActivityThread -> View
     const first = ts.find(s => s.stack.includes('android.view.View'))!
     expect(first.stack[0]).toBe('system_server')
     expect(first.stack[1]).toBe('android.app.ActivityThread')
@@ -253,23 +249,21 @@ describe('JSON array as frame stack with outer columns', () => {
     expect(first.values.self_size).toBe(8192)
   })
 
-  it('partitions by outer column while using JSON array for frames', async () => {
+  it('partitions by outer column while using JSON array sub-field for frames', async () => {
     const data = parseTSV(perfettoStyleTSV())
     const cols = analyzeColumns(data)
 
     const profiles = await generateProfiles(data, cols, {
       roles: new Map<string, ColumnRole>([
         ['process_name', 'partition'],
-        ['path', 'frame'],
+        ['path.class', 'frame'],
         ['self_size', 'metric'],
         ['self_count', 'metric'],
       ]),
-      frameOrder: ['path'],
-      jsonArrayLabelKey: new Map([['path', 'class']]),
+      frameOrder: ['path.class'],
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'objects']]),
     })
 
-    // 2 processes = 2 partitions
     expect(profiles.length).toBe(2)
     const server = profiles.find(p => p.name === 'system_server')!
     const app = profiles.find(p => p.name === 'com.example')!
@@ -277,27 +271,47 @@ describe('JSON array as frame stack with outer columns', () => {
     expect(app.rowCount).toBe(1)
   })
 
-  it('uses outer column as label while JSON array provides frames', async () => {
+  it('uses outer column as label while JSON array sub-field provides frames', async () => {
     const data = parseTSV(perfettoStyleTSV())
     const cols = analyzeColumns(data)
 
     const profiles = await generateProfiles(data, cols, {
       roles: new Map<string, ColumnRole>([
         ['process_name', 'label'],
-        ['path', 'frame'],
+        ['path.class', 'frame'],
         ['self_size', 'metric'],
       ]),
-      frameOrder: ['path'],
-      jsonArrayLabelKey: new Map([['path', 'class']]),
+      frameOrder: ['path.class'],
       metricUnits: new Map([['self_size', 'bytes']]),
     })
 
     expect(profiles).toHaveLength(1)
-    // With labels, each row is own sample
     expect(profiles[0].sampleCount).toBe(3)
-    // Text samples should have process_name as label
     const ts = profiles[0].textSamples
     expect(ts[0].labels.process_name).toBeDefined()
+  })
+
+  it('uses heap_type JSON array sub-field in text view labels via frame name', async () => {
+    // heap_type can't be a pprof label (it's per-array-element, not per-row),
+    // but the user can skip it or include it in the frame name manually.
+    // Here we just verify the basic case works with class as frame.
+    const data = parseTSV(perfettoStyleTSV())
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map<string, ColumnRole>([
+        ['path.class', 'frame'],
+        ['self_size', 'metric'],
+      ]),
+      frameOrder: ['path.class'],
+      metricUnits: new Map([['self_size', 'bytes']]),
+    })
+
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].sampleCount).toBe(3)
+    // Verify stacks use the class key
+    const stacks = profiles[0].textSamples.map(s => s.stack)
+    expect(stacks.some(s => s.includes('android.view.View'))).toBe(true)
   })
 })
 
@@ -308,7 +322,6 @@ describe('empty and degenerate inputs', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['x', 'frame']]),
       frameOrder: ['x'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles).toHaveLength(1)
@@ -321,7 +334,6 @@ describe('empty and degenerate inputs', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['a', 'frame'], ['b', 'none'], ['c', 'none']]),
       frameOrder: ['a'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles).toHaveLength(1)
@@ -336,7 +348,6 @@ describe('empty and degenerate inputs', () => {
     const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame'], ['id', 'partition']]),
       frameOrder: ['name'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     expect(profiles.length).toBe(50)

@@ -30,7 +30,6 @@ describe('worker message protocol', () => {
     const config: ProfileConfig = {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes']]),
     }
 
@@ -41,7 +40,6 @@ describe('worker message protocol', () => {
       config: {
         roles: [...config.roles.entries()],
         frameOrder: config.frameOrder,
-        jsonArrayLabelKey: [...config.jsonArrayLabelKey.entries()],
         metricUnits: [...config.metricUnits.entries()],
       },
     }
@@ -96,7 +94,6 @@ describe('sync fallback (generateAsync without worker)', () => {
     const config: ProfileConfig = {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     }
 
@@ -119,7 +116,6 @@ describe('sync fallback (generateAsync without worker)', () => {
         ['self_count', 'metric'],
       ]),
       frameOrder: ['process_name', 'path'],
-      jsonArrayLabelKey: new Map([['path', 'class']]),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     }
 
@@ -136,7 +132,6 @@ describe('sync fallback (generateAsync without worker)', () => {
     const config: ProfileConfig = {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
     }
 
@@ -163,7 +158,6 @@ describe('worker code parity with sync', () => {
     const config: ProfileConfig = {
       roles: new Map([['mod', 'frame'], ['func', 'frame'], ['size', 'metric']]),
       frameOrder: ['mod', 'func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
     }
 
@@ -181,7 +175,6 @@ describe('worker code parity with sync', () => {
     const config: ProfileConfig = {
       roles: new Map([['path', 'frame'], ['size', 'metric']]),
       frameOrder: ['path'],
-      jsonArrayLabelKey: new Map([['path', 'cls']]),
       metricUnits: new Map([['size', 'bytes']]),
     }
 
@@ -198,7 +191,6 @@ describe('worker code parity with sync', () => {
     const config: ProfileConfig = {
       roles: new Map([['func', 'frame'], ['env', 'partition'], ['count', 'metric']]),
       frameOrder: ['func'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['count', 'count']]),
     }
 

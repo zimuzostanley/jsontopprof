@@ -155,26 +155,71 @@ export function analyzeColumns(data: ParsedData): ColumnInfo[] {
         })
       }
     } else if (jsonTypes.has('array') && !jsonTypes.has('other')) {
-      // JSON array column — potential stack column
-      const firstArr = jsonResults.find(r => r.type === 'array')
-      let arrayKeys: string[] | undefined
-      if (firstArr?.value && Array.isArray(firstArr.value) && firstArr.value.length > 0) {
-        const first = firstArr.value[0]
-        if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
-          arrayKeys = Object.keys(first)
+      // JSON array column — check if it contains objects or primitives
+      const allArrayElems: Record<string, unknown>[] = []
+      for (const r of jsonResults) {
+        if (r.type === 'array' && Array.isArray(r.value)) {
+          for (const elem of r.value) {
+            if (typeof elem === 'object' && elem !== null && !Array.isArray(elem)) {
+              allArrayElems.push(elem as Record<string, unknown>)
+            }
+          }
         }
       }
 
-      columns.push({
-        name: header,
-        source: header,
-        isJsonArray: true,
-        jsonArrayKeys: arrayKeys,
-        sampleValues: nonEmpty.slice(0, 2).map(s =>
-          s.length > 60 ? s.slice(0, 57) + '...' : s
-        ),
-        isNumeric: false,
-      })
+      if (allArrayElems.length > 0) {
+        // Array of objects — expand keys as sub-columns
+        const arrKeys = new Set<string>()
+        const arrKeySamples = new Map<string, string[]>()
+        const arrKeyNumeric = new Map<string, boolean>()
+        for (const elem of allArrayElems) {
+          for (const [k, v] of Object.entries(elem)) {
+            arrKeys.add(k)
+            const vs = String(v ?? '')
+            if (!arrKeySamples.has(k)) arrKeySamples.set(k, [])
+            const samples = arrKeySamples.get(k)!
+            if (samples.length < 3) samples.push(vs)
+            if (arrKeyNumeric.get(k) !== false) {
+              arrKeyNumeric.set(k, isNumericString(vs))
+            }
+          }
+        }
+
+        // Parent column (informational)
+        columns.push({
+          name: header,
+          source: header,
+          isJsonArray: true,
+          jsonArrayKeys: [...arrKeys],
+          sampleValues: nonEmpty.slice(0, 2).map(s =>
+            s.length > 60 ? s.slice(0, 57) + '...' : s
+          ),
+          isNumeric: false,
+        })
+
+        // Sub-columns for each key
+        for (const key of arrKeys) {
+          columns.push({
+            name: `${header}.${key}`,
+            source: header,
+            jsonKey: key,
+            isJsonArrayField: true,
+            sampleValues: (arrKeySamples.get(key) ?? []).slice(0, 3),
+            isNumeric: arrKeyNumeric.get(key) ?? false,
+          })
+        }
+      } else {
+        // Array of primitives — keep as single assignable column
+        columns.push({
+          name: header,
+          source: header,
+          isJsonArray: true,
+          sampleValues: nonEmpty.slice(0, 2).map(s =>
+            s.length > 60 ? s.slice(0, 57) + '...' : s
+          ),
+          isNumeric: false,
+        })
+      }
     } else {
       // Regular column
       const allNumeric = nonEmpty.length > 0 && nonEmpty.every(isNumericString)

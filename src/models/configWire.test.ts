@@ -13,7 +13,6 @@ function makeConfig(overrides: Partial<ProfileConfig> = {}): ProfileConfig {
       ['unused', 'none'],
     ]),
     frameOrder: ['module', 'func'],
-    jsonArrayLabelKey: new Map([['path', 'class']]),
     metricUnits: new Map([['size', 'bytes']]),
     ...overrides,
   }
@@ -40,12 +39,6 @@ describe('serializeConfig / deserializeConfig round-trip', () => {
     expect(restored.frameOrder).toEqual(['module', 'func'])
   })
 
-  it('preserves jsonArrayLabelKey', () => {
-    const config = makeConfig()
-    const restored = deserializeConfig(serializeConfig(config))
-    expect(restored.jsonArrayLabelKey.get('path')).toBe('class')
-  })
-
   it('preserves metricUnits', () => {
     const config = makeConfig()
     const restored = deserializeConfig(serializeConfig(config))
@@ -56,11 +49,9 @@ describe('serializeConfig / deserializeConfig round-trip', () => {
     const config = makeConfig({
       roles: new Map([['x', 'frame']]),
       frameOrder: ['x'],
-      jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
     })
     const restored = deserializeConfig(serializeConfig(config))
-    expect(restored.jsonArrayLabelKey.size).toBe(0)
     expect(restored.metricUnits.size).toBe(0)
   })
 

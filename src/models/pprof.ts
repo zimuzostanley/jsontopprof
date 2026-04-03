@@ -206,7 +206,6 @@ function buildStack(
   row: Record<string, string>,
   frameOrder: string[],
   columns: ColumnInfo[],
-  jsonArrayLabelKey: Map<string, string>,
 ): string[] {
   const stack: string[] = []
 
@@ -214,15 +213,17 @@ function buildStack(
     const col = columns.find(c => c.name === frameName)
     if (!col) continue
 
-    if (col.isJsonArray) {
-      const raw = row[col.source] ?? ''
+    if (col.isJsonArrayField || col.isJsonArray) {
+      // JSON array: expand each element as a frame.
+      // isJsonArrayField: use this key from each object element.
+      // isJsonArray (primitives): use element directly.
+      const raw = row[col.isJsonArrayField ? col.source : col.name] ?? ''
       try {
         const arr = JSON.parse(raw.trim())
         if (Array.isArray(arr)) {
-          const labelKey = jsonArrayLabelKey.get(col.name)
           for (const elem of arr) {
-            if (typeof elem === 'object' && elem !== null && labelKey) {
-              stack.push(String(elem[labelKey] ?? '(unknown)'))
+            if (col.isJsonArrayField && typeof elem === 'object' && elem !== null && col.jsonKey) {
+              stack.push(String(elem[col.jsonKey] ?? '(unknown)'))
             } else {
               stack.push(String(elem ?? '(null)'))
             }
@@ -367,7 +368,7 @@ export async function generateProfiles(
 
     if (hasLabels) {
       for (const row of rows) {
-        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
+        const stack = buildStack(row, config.frameOrder, columns)
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
         const sampleLabels = buildLabels(row, labelColumnInfos)
@@ -379,7 +380,7 @@ export async function generateProfiles(
     } else {
       const stacks = new Map<string, { stack: string[]; values: number[] }>()
       for (const row of rows) {
-        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
+        const stack = buildStack(row, config.frameOrder, columns)
         const stackKey = stack.join('\x00')
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
@@ -425,7 +426,7 @@ export async function generateProfiles(
       fileName,
       data: compressed,
       sampleCount: hasLabels ? rows.length : new Set(
-        rows.map(row => buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey).join('\x00'))
+        rows.map(row => buildStack(row, config.frameOrder, columns).join('\x00'))
       ).size,
       rowCount: rows.length,
       partitionValues: partValues,

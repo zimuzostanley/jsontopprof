@@ -16,6 +16,8 @@ export interface ColumnInfo {
   isJsonArray?: boolean
   /** For JSON array-of-objects columns, available keys */
   jsonArrayKeys?: string[]
+  /** True if this is a sub-field of a JSON array column (path.class, path.heap_type) */
+  isJsonArrayField?: boolean
   /** Sample values for preview */
   sampleValues: string[]
   /** Whether all non-empty values are numeric */
@@ -38,8 +40,6 @@ export interface ProfileConfig {
   roles: Map<string, ColumnRole>
   /** Ordered list of frame column names (last = leaf) */
   frameOrder: string[]
-  /** For JSON array columns used as frames, which object key to use as label */
-  jsonArrayLabelKey: Map<string, string>
   /** Unit labels for metric columns */
   metricUnits: Map<string, string>
 }
