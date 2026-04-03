@@ -39,9 +39,13 @@ export function parseDelimited(text: string, delimiter: string): string[][] {
     const ch = text[i]
 
     if (inQuotes) {
-      if (ch === '"') {
+      if (ch === '\\' && i + 1 < text.length && text[i + 1] === '"') {
+        // Backslash-escaped quote (\")
+        field += '"'
+        i += 2
+      } else if (ch === '"') {
         if (i + 1 < text.length && text[i + 1] === '"') {
-          // Escaped quote
+          // RFC 4180 escaped quote ("")
           field += '"'
           i += 2
         } else {

@@ -193,9 +193,36 @@ describe('parseDelimited edge cases', () => {
   })
 
   it('handles JSON with properly escaped quotes', () => {
-    // JSON stored with RFC 4180 double-quote escaping: "" -> "
     const result = parseDelimited('col\n"{""key"": ""value""}"\n', '\t')
     expect(result[1][0]).toBe('{"key": "value"}')
+  })
+
+  it('handles backslash-escaped quotes (Perfetto style)', () => {
+    // Perfetto TSV uses \" inside quoted fields
+    const result = parseDelimited(
+      'path\n"[{\\"class\\":\\"Foo\\",\\"count\\":1}]"',
+      '\t',
+    )
+    expect(result[1][0]).toBe('[{"class":"Foo","count":1}]')
+    // Verify it parses as valid JSON
+    const parsed = JSON.parse(result[1][0])
+    expect(parsed[0].class).toBe('Foo')
+    expect(parsed[0].count).toBe(1)
+  })
+
+  it('handles real Perfetto heap dominator format', () => {
+    // Simulates the actual format: outer quoted field with \" escaped JSON inside
+    const pathJson = '[{\\"class\\":\\"android.app.ActivityThread\\",\\"heap_type\\":\\"HEAP_TYPE_APP\\"},{\\"class\\":\\"android.view.View\\",\\"heap_type\\":\\"HEAP_TYPE_NATIVE\\"}]'
+    const row = `process_name\tself_size\tpath\n"system_server"\t8192\t"${pathJson}"`
+    const result = parseTSV(row)
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0].process_name).toBe('system_server')
+    expect(result.rows[0].self_size).toBe('8192')
+    // path should be valid JSON after unescaping
+    const path = JSON.parse(result.rows[0].path)
+    expect(path).toHaveLength(2)
+    expect(path[0].class).toBe('android.app.ActivityThread')
+    expect(path[1].heap_type).toBe('HEAP_TYPE_NATIVE')
   })
 })
 

@@ -189,6 +189,118 @@ describe('frame order matters', () => {
   })
 })
 
+describe('JSON array as frame stack with outer columns', () => {
+  // Simulates Perfetto heap dominator format:
+  // outer columns (process_name, self_size, self_count) + JSON array (path)
+  // The JSON array defines the stack frames, outer columns are root frame / metrics.
+  function perfettoStyleTSV(): string {
+    return [
+      'process_name\tself_size\tself_count\tpath',
+      'system_server\t8192\t10\t"[{\\"class\\":\\"android.app.ActivityThread\\",\\"heap_type\\":\\"HEAP_TYPE_APP\\"},{\\"class\\":\\"android.view.View\\",\\"heap_type\\":\\"HEAP_TYPE_NATIVE\\"}]"',
+      'com.example\t4096\t5\t"[{\\"class\\":\\"com.example.MainActivity\\",\\"heap_type\\":\\"HEAP_TYPE_APP\\"}]"',
+      'system_server\t16384\t2\t"[{\\"class\\":\\"android.graphics.Bitmap\\",\\"heap_type\\":\\"HEAP_TYPE_NATIVE\\"}]"',
+    ].join('\n')
+  }
+
+  it('parses backslash-escaped JSON array column', () => {
+    const data = parseTSV(perfettoStyleTSV())
+    expect(data.rows).toHaveLength(3)
+    // path should parse as JSON after TSV unescaping
+    const path = JSON.parse(data.rows[0].path)
+    expect(path).toHaveLength(2)
+    expect(path[0].class).toBe('android.app.ActivityThread')
+  })
+
+  it('detects JSON array column with object keys', () => {
+    const data = parseTSV(perfettoStyleTSV())
+    const cols = analyzeColumns(data)
+    const pathCol = cols.find(c => c.name === 'path')
+    expect(pathCol?.isJsonArray).toBe(true)
+    expect(pathCol?.jsonArrayKeys).toContain('class')
+    expect(pathCol?.jsonArrayKeys).toContain('heap_type')
+  })
+
+  it('generates profile with outer column as root frame + JSON array as stack', async () => {
+    const data = parseTSV(perfettoStyleTSV())
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map<string, ColumnRole>([
+        ['process_name', 'frame'],
+        ['path', 'frame'],
+        ['self_size', 'metric'],
+        ['self_count', 'metric'],
+      ]),
+      frameOrder: ['process_name', 'path'],
+      jsonArrayLabelKey: new Map([['path', 'class']]),
+      metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'objects']]),
+    })
+
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].rowCount).toBe(3)
+    // 3 unique stacks (all different leaf frames)
+    expect(profiles[0].sampleCount).toBe(3)
+    expect(profiles[0].data[0]).toBe(0x1f) // gzip
+
+    // Text samples should show the full stack
+    const ts = profiles[0].textSamples
+    expect(ts.length).toBe(3)
+    // First sample stack: system_server -> ActivityThread -> View
+    const first = ts.find(s => s.stack.includes('android.view.View'))!
+    expect(first.stack[0]).toBe('system_server')
+    expect(first.stack[1]).toBe('android.app.ActivityThread')
+    expect(first.stack[2]).toBe('android.view.View')
+    expect(first.values.self_size).toBe(8192)
+  })
+
+  it('partitions by outer column while using JSON array for frames', async () => {
+    const data = parseTSV(perfettoStyleTSV())
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map<string, ColumnRole>([
+        ['process_name', 'partition'],
+        ['path', 'frame'],
+        ['self_size', 'metric'],
+        ['self_count', 'metric'],
+      ]),
+      frameOrder: ['path'],
+      jsonArrayLabelKey: new Map([['path', 'class']]),
+      metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'objects']]),
+    })
+
+    // 2 processes = 2 partitions
+    expect(profiles.length).toBe(2)
+    const server = profiles.find(p => p.name === 'system_server')!
+    const app = profiles.find(p => p.name === 'com.example')!
+    expect(server.rowCount).toBe(2)
+    expect(app.rowCount).toBe(1)
+  })
+
+  it('uses outer column as label while JSON array provides frames', async () => {
+    const data = parseTSV(perfettoStyleTSV())
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map<string, ColumnRole>([
+        ['process_name', 'label'],
+        ['path', 'frame'],
+        ['self_size', 'metric'],
+      ]),
+      frameOrder: ['path'],
+      jsonArrayLabelKey: new Map([['path', 'class']]),
+      metricUnits: new Map([['self_size', 'bytes']]),
+    })
+
+    expect(profiles).toHaveLength(1)
+    // With labels, each row is own sample
+    expect(profiles[0].sampleCount).toBe(3)
+    // Text samples should have process_name as label
+    const ts = profiles[0].textSamples
+    expect(ts[0].labels.process_name).toBeDefined()
+  })
+})
+
 describe('empty and degenerate inputs', () => {
   it('single column, single row', async () => {
     const data = parseTSV('x\nval')
