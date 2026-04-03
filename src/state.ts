@@ -227,10 +227,21 @@ export async function generate(): Promise<void> {
     S.step = 'results'
     S.resultsView = 'pprofs'
 
-    // Init text metrics from first profile's sample keys
-    if (S.profiles.length > 0 && S.profiles[0].textSamples.length > 0) {
-      S.textMetrics = new Set(Object.keys(S.profiles[0].textSamples[0].values))
+    // Init text metrics: sample-level + frame-level
+    const allMetricKeys = new Set<string>()
+    for (const p of S.profiles) {
+      for (const s of p.textSamples) {
+        for (const k of Object.keys(s.values)) allMetricKeys.add(k)
+        if (s.frameValues) {
+          for (const fv of s.frameValues) {
+            for (const k of Object.keys(fv)) allMetricKeys.add(k)
+          }
+        }
+        if (allMetricKeys.size > 0) break
+      }
+      if (allMetricKeys.size > 0) break
     }
+    S.textMetrics = allMetricKeys
 
     // Persist config for this schema
     if (S.data) {
