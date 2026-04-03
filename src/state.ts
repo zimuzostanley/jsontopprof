@@ -1,9 +1,72 @@
 import m from 'mithril'
 import { ColumnRole, ProfileConfig, GeneratedProfile, AppStep } from './models/types'
 import { parseTSV, analyzeColumns, suggestDefaults } from './models/tsv'
-import { generateProfiles } from './models/pprof'
+import { generateProfilesAsync, GenerateProgress } from './generateAsync'
 
 import type { ColumnInfo, ParsedData } from './models/types'
+
+// ── Config persistence ──
+// Saves column role assignments keyed by the sorted header list.
+// When the same schema is re-imported, previous config is restored.
+
+const CONFIG_STORAGE_KEY = 'pprof-configs'
+const MAX_SAVED_CONFIGS = 20
+
+interface SavedConfig {
+  roles: [string, string][]
+  frameOrder: string[]
+  jsonArrayLabelKey: [string, string][]
+  metricUnits: [string, string][]
+  timestamp: number
+}
+
+function configKey(headers: string[]): string {
+  return headers.slice().sort().join('\t')
+}
+
+function loadSavedConfigs(): Record<string, SavedConfig> {
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveConfig(headers: string[], state: State): void {
+  try {
+    const configs = loadSavedConfigs()
+    configs[configKey(headers)] = {
+      roles: [...state.roles.entries()],
+      frameOrder: state.frameOrder,
+      jsonArrayLabelKey: [...state.jsonArrayLabelKey.entries()],
+      metricUnits: [...state.metricUnits.entries()],
+      timestamp: Date.now(),
+    }
+    // Prune oldest if over limit
+    const keys = Object.keys(configs)
+    if (keys.length > MAX_SAVED_CONFIGS) {
+      keys.sort((a, b) => configs[a].timestamp - configs[b].timestamp)
+      for (let i = 0; i < keys.length - MAX_SAVED_CONFIGS; i++) {
+        delete configs[keys[i]]
+      }
+    }
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(configs))
+  } catch { /* localStorage may be full or unavailable */ }
+}
+
+function restoreConfig(headers: string[], columns: ColumnInfo[]): SavedConfig | null {
+  const configs = loadSavedConfigs()
+  const saved = configs[configKey(headers)]
+  if (!saved) return null
+
+  // Validate saved config against current columns
+  const colNames = new Set(columns.map(c => c.name))
+  const validRoles = saved.roles.filter(([name]) => colNames.has(name))
+  if (validRoles.length === 0) return null
+
+  return { ...saved, roles: validRoles }
+}
+
+// ── State ──
 
 export interface State {
   theme: 'light' | 'dark'
@@ -20,6 +83,7 @@ export interface State {
   profiles: GeneratedProfile[]
   generating: boolean
   generateError: string
+  progress: GenerateProgress | null
 }
 
 function loadTheme(): 'light' | 'dark' {
@@ -49,6 +113,7 @@ export const S: State = {
   profiles: [],
   generating: false,
   generateError: '',
+  progress: null,
 }
 
 export function applyTheme(theme: 'light' | 'dark'): void {
@@ -61,7 +126,6 @@ export function toggleTheme(): void {
   applyTheme(S.theme === 'light' ? 'dark' : 'light')
 }
 
-/** Infer a reasonable unit from a column name. */
 function inferUnit(name: string): string {
   const lower = name.toLowerCase()
   if (lower.includes('size') || lower.includes('byte')) return 'bytes'
@@ -75,6 +139,7 @@ export function loadData(text: string, fileName: string): void {
   S.parseError = ''
   S.profiles = []
   S.generateError = ''
+  S.progress = null
 
   try {
     const data = parseTSV(text)
@@ -89,18 +154,34 @@ export function loadData(text: string, fileName: string): void {
     S.data = data
     S.columns = analyzeColumns(data)
 
-    const defaults = suggestDefaults(S.columns)
-    S.roles = defaults.roles
-    S.frameOrder = defaults.frameOrder
-    S.jsonArrayLabelKey = new Map()
-    S.metricUnits = new Map()
-
-    for (const col of S.columns) {
-      if (defaults.roles.get(col.name) === 'metric') {
-        S.metricUnits.set(col.name, inferUnit(col.name))
+    // Try to restore a previous config for this schema
+    const saved = restoreConfig(data.headers, S.columns)
+    if (saved) {
+      S.roles = new Map(saved.roles as [string, ColumnRole][])
+      S.frameOrder = saved.frameOrder.filter(n => S.columns.some(c => c.name === n))
+      S.jsonArrayLabelKey = new Map(saved.jsonArrayLabelKey)
+      S.metricUnits = new Map(saved.metricUnits)
+      // Fill in any new columns not in saved config
+      for (const col of S.columns) {
+        if (!S.roles.has(col.name)) {
+          S.roles.set(col.name, 'none')
+        }
       }
-      if (col.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0) {
-        S.jsonArrayLabelKey.set(col.name, col.jsonArrayKeys[0])
+    } else {
+      // Apply smart defaults
+      const defaults = suggestDefaults(S.columns)
+      S.roles = defaults.roles
+      S.frameOrder = defaults.frameOrder
+      S.jsonArrayLabelKey = new Map()
+      S.metricUnits = new Map()
+
+      for (const col of S.columns) {
+        if (defaults.roles.get(col.name) === 'metric') {
+          S.metricUnits.set(col.name, inferUnit(col.name))
+        }
+        if (col.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0) {
+          S.jsonArrayLabelKey.set(col.name, col.jsonArrayKeys[0])
+        }
       }
     }
 
@@ -142,6 +223,7 @@ export async function generate(): Promise<void> {
   S.generating = true
   S.generateError = ''
   S.profiles = []
+  S.progress = { message: 'Starting\u2026', pct: 0 }
   m.redraw()
 
   try {
@@ -151,12 +233,21 @@ export async function generate(): Promise<void> {
       jsonArrayLabelKey: S.jsonArrayLabelKey,
       metricUnits: S.metricUnits,
     }
-    S.profiles = await generateProfiles(S.data, S.columns, config)
+    S.profiles = await generateProfilesAsync(S.data, S.columns, config, (p) => {
+      S.progress = p
+      m.redraw()
+    })
     S.step = 'results'
+
+    // Persist config for this schema
+    if (S.data) {
+      saveConfig(S.data.headers, S)
+    }
   } catch (e: unknown) {
     S.generateError = errorMessage(e) || 'Failed to generate profiles'
   } finally {
     S.generating = false
+    S.progress = null
     m.redraw()
   }
 }
@@ -175,10 +266,11 @@ export function reset(): void {
   S.profiles = []
   S.generating = false
   S.generateError = ''
+  S.progress = null
 }
 
 export function downloadProfile(profile: GeneratedProfile): void {
-  const blob = new Blob([profile.data as BlobPart], { type: 'application/octet-stream' })
+  const blob = new Blob([profile.data as unknown as ArrayBuffer], { type: 'application/octet-stream' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

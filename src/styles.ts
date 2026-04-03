@@ -446,6 +446,20 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 }
 .actions .spacer { flex: 1; }
 
+/* --- Progress --- */
+.progress-bar {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
 /* --- Spinner --- */
 .spinner {
   display: inline-block;

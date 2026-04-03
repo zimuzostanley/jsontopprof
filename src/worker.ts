@@ -1,8 +1,16 @@
-import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './types'
+// Web Worker for profile generation.
+// Runs buildStack/aggregation/protobuf encoding off the main thread.
 
-// ── Protobuf wire format ──
-// Encodes fields per the protobuf binary wire format spec.
-// Wire type 0 = varint, wire type 2 = length-delimited.
+// Worker global scope — typed minimally to avoid adding webworker lib
+// which conflicts with DOM lib used by the rest of the app.
+const ctx = globalThis as unknown as {
+  postMessage(msg: unknown, transfer?: Transferable[]): void
+  onmessage: ((e: MessageEvent) => void) | null
+}
+
+import { ParsedData, ColumnInfo, ProfileConfig } from './models/types'
+
+// ── Re-implement the core generation logic here (workers can't share module scope) ──
 
 function varint(value: number): Uint8Array {
   if (value > 0xFFFFFFFF) return varintBig(BigInt(value))
@@ -56,8 +64,6 @@ function fieldMessage(field: number, msg: Uint8Array): Uint8Array {
 
 const encoder = new TextEncoder()
 
-// ── String table ──
-
 class StringTable {
   private strings: string[] = ['']
   private index = new Map<string, number>([['', 0]])
@@ -75,8 +81,6 @@ class StringTable {
     return concat(...this.strings.map(s => fieldBytes(6, encoder.encode(s))))
   }
 }
-
-// ── Pprof builder ──
 
 class PprofBuilder {
   private strings = new StringTable()
@@ -100,9 +104,7 @@ class PprofBuilder {
     this.functions.set(name, fid)
     const nameIdx = this.strings.intern(name)
     this.functionProtos.push(fieldMessage(5, concat(
-      fieldVarint(1, fid),
-      fieldVarint(2, nameIdx),
-      fieldVarint(3, nameIdx),
+      fieldVarint(1, fid), fieldVarint(2, nameIdx), fieldVarint(3, nameIdx),
     )))
     return fid
   }
@@ -113,50 +115,40 @@ class PprofBuilder {
     const lid = this.nextLocId++
     this.locations.set(funcId, lid)
     this.locationProtos.push(fieldMessage(4, concat(
-      fieldVarint(1, lid),
-      fieldMessage(4, fieldVarint(1, funcId)),
+      fieldVarint(1, lid), fieldMessage(4, fieldVarint(1, funcId)),
     )))
     return lid
   }
 
   addSample(stack: string[], values: number[]): void {
     const parts: Uint8Array[] = []
-    // pprof expects leaf-first
     for (let i = stack.length - 1; i >= 0; i--) {
       const fid = this.getFunctionId(stack[i])
       parts.push(fieldVarint(1, this.getLocationId(fid)))
     }
-    for (const v of values) {
-      parts.push(fieldVarint(2, Math.max(0, v)))
-    }
+    for (const v of values) parts.push(fieldVarint(2, Math.max(0, v)))
     this.samples.push(fieldMessage(2, concat(...parts)))
   }
 
   encode(): Uint8Array {
     const parts: Uint8Array[] = []
-
     for (let i = 0; i < this.metricNames.length; i++) {
       const typeIdx = this.strings.intern(this.metricNames[i])
       const unitIdx = this.strings.intern(this.metricUnits[i])
       parts.push(fieldMessage(1, concat(fieldVarint(1, typeIdx), fieldVarint(2, unitIdx))))
     }
-
     for (const s of this.samples) parts.push(s)
     for (const l of this.locationProtos) parts.push(l)
     for (const f of this.functionProtos) parts.push(f)
     parts.push(this.strings.encode())
-
     if (this.metricNames.length > 0) {
       parts.push(fieldVarint(15, this.strings.intern(this.metricNames[0])))
     }
-
     return concat(...parts)
   }
 }
 
 // ── Column value resolution ──
-// Single place for reading a value from a row given a ColumnInfo,
-// handling regular columns, JSON sub-fields, and JSON arrays.
 
 function resolveStringValue(row: Record<string, string>, col: ColumnInfo): string {
   if (col.jsonKey !== undefined) {
@@ -164,9 +156,7 @@ function resolveStringValue(row: Record<string, string>, col: ColumnInfo): strin
     try {
       const obj = JSON.parse(raw.trim())
       return String(obj[col.jsonKey] ?? '')
-    } catch {
-      return ''
-    }
+    } catch { return '' }
   }
   return row[col.name] ?? ''
 }
@@ -177,8 +167,6 @@ function resolveNumericValue(row: Record<string, string>, col: ColumnInfo): numb
   return isNaN(n) ? 0 : Math.max(0, Math.round(n))
 }
 
-// ── Stack & partition helpers ──
-
 function buildStack(
   row: Record<string, string>,
   frameOrder: string[],
@@ -186,11 +174,9 @@ function buildStack(
   jsonArrayLabelKey: Map<string, string>,
 ): string[] {
   const stack: string[] = []
-
   for (const frameName of frameOrder) {
     const col = columns.find(c => c.name === frameName)
     if (!col) continue
-
     if (col.isJsonArray) {
       const raw = row[col.source] ?? ''
       try {
@@ -213,18 +199,7 @@ function buildStack(
       stack.push(val || '(empty)')
     }
   }
-
   return stack.length > 0 ? stack : ['(no frames)']
-}
-
-function getMetricValue(
-  row: Record<string, string>,
-  metricName: string,
-  columns: ColumnInfo[],
-): number {
-  const col = columns.find(c => c.name === metricName)
-  if (!col) return 0
-  return resolveNumericValue(row, col)
 }
 
 function getPartitionKey(
@@ -245,57 +220,83 @@ function parsePartitionKey(partKey: string): Record<string, string> {
   const result: Record<string, string> = {}
   for (const part of partKey.split('|')) {
     const eq = part.indexOf('=')
-    if (eq >= 0) {
-      result[part.slice(0, eq)] = part.slice(eq + 1)
-    }
+    if (eq >= 0) result[part.slice(0, eq)] = part.slice(eq + 1)
   }
   return result
 }
 
-// ── Gzip ──
+// ── Message types ──
 
-async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-  // Cast needed: TS types Uint8Array.buffer as ArrayBufferLike which
-  // includes SharedArrayBuffer, but Blob only accepts ArrayBuffer.
-  // Safe because browser Uint8Array never uses SharedArrayBuffer.
-  const stream = new Blob([data as unknown as ArrayBuffer]).stream()
-    .pipeThrough(new CompressionStream('gzip'))
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) chunks.push(value)
+export interface GenerateRequest {
+  type: 'generate'
+  data: ParsedData
+  columns: ColumnInfo[]
+  config: {
+    roles: [string, string][]        // serialized Map
+    frameOrder: string[]
+    jsonArrayLabelKey: [string, string][]  // serialized Map
+    metricUnits: [string, string][]        // serialized Map
   }
-  return concat(...chunks)
 }
 
-// ── Profile generation ──
+export interface ProgressMessage {
+  type: 'progress'
+  message: string
+  pct: number
+}
 
-export async function generateProfiles(
-  data: ParsedData,
-  columns: ColumnInfo[],
-  config: ProfileConfig,
-): Promise<GeneratedProfile[]> {
-  if (config.frameOrder.length === 0) {
+export interface ResultMessage {
+  type: 'result'
+  profiles: {
+    name: string
+    fileName: string
+    data: ArrayBuffer
+    sampleCount: number
+    rowCount: number
+    partitionValues: Record<string, string>
+  }[]
+}
+
+export interface ErrorMessage {
+  type: 'error'
+  message: string
+}
+
+// ── Worker handler ──
+
+function progress(message: string, pct: number): void {
+  const msg: ProgressMessage = { type: 'progress', message, pct }
+  ctx.postMessage(msg)
+}
+
+async function handleGenerate(req: GenerateRequest): Promise<void> {
+  const { data, columns } = req
+  const roles = new Map(req.config.roles)
+  const frameOrder = req.config.frameOrder
+  const jsonArrayLabelKey = new Map(req.config.jsonArrayLabelKey)
+  const metricUnits = new Map(req.config.metricUnits)
+
+  if (frameOrder.length === 0) {
     throw new Error('At least one frame column must be selected')
   }
 
-  const metricColumns = [...config.roles.entries()]
+  const metricColumns = [...roles.entries()]
     .filter(([, role]) => role === 'metric')
     .map(([name]) => name)
 
-  const partitionColumns = [...config.roles.entries()]
+  const partitionColumns = [...roles.entries()]
     .filter(([, role]) => role === 'partition')
     .map(([name]) => name)
 
   const allMetricNames = [...metricColumns, 'rows']
   const allMetricUnits = [
-    ...metricColumns.map(n => config.metricUnits.get(n) ?? 'count'),
+    ...metricColumns.map(n => metricUnits.get(n) ?? 'count'),
     'count',
   ]
 
-  // Group rows by partition
+  progress('Grouping rows\u2026', 0)
+
+  // Group by partition
   const partitions = new Map<string, Record<string, string>[]>()
   for (const row of data.rows) {
     const key = getPartitionKey(row, partitionColumns, columns)
@@ -304,31 +305,84 @@ export async function generateProfiles(
     bucket.push(row)
   }
 
-  const profiles: GeneratedProfile[] = []
+  const totalPartitions = partitions.size
+  let partIdx = 0
+  const results: ResultMessage['profiles'] = []
 
   for (const [partKey, rows] of partitions) {
+    const pctBase = (partIdx / totalPartitions) * 100
+    const pctRange = 100 / totalPartitions
+
+    progress(
+      totalPartitions > 1
+        ? `Building profile ${partIdx + 1}/${totalPartitions}\u2026`
+        : `Building profile\u2026`,
+      pctBase,
+    )
+
     const builder = new PprofBuilder(allMetricNames, allMetricUnits)
     const stacks = new Map<string, { stack: string[]; values: number[] }>()
 
-    for (const row of rows) {
-      const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const stack = buildStack(row, frameOrder, columns, jsonArrayLabelKey)
       const stackKey = stack.join('\x00')
-      const values = metricColumns.map(name => getMetricValue(row, name, columns))
-      values.push(1) // rows
+      const values = metricColumns.map(name => {
+        const col = columns.find(c => c.name === name)
+        return col ? resolveNumericValue(row, col) : 0
+      })
+      values.push(1)
 
       const existing = stacks.get(stackKey)
       if (existing) {
-        for (let i = 0; i < values.length; i++) existing.values[i] += values[i]
+        for (let j = 0; j < values.length; j++) existing.values[j] += values[j]
       } else {
         stacks.set(stackKey, { stack, values })
       }
+
+      // Progress every 5000 rows
+      if (i > 0 && i % 5000 === 0) {
+        progress(
+          `Processing rows ${i.toLocaleString()}/${rows.length.toLocaleString()}\u2026`,
+          pctBase + (i / rows.length) * pctRange * 0.7,
+        )
+      }
     }
+
+    progress(
+      totalPartitions > 1
+        ? `Encoding profile ${partIdx + 1}/${totalPartitions}\u2026`
+        : 'Encoding profile\u2026',
+      pctBase + pctRange * 0.7,
+    )
 
     for (const { stack, values } of stacks.values()) {
       builder.addSample(stack, values)
     }
 
-    const compressed = await gzipCompress(builder.encode())
+    const rawData = builder.encode()
+
+    progress(
+      totalPartitions > 1
+        ? `Compressing profile ${partIdx + 1}/${totalPartitions}\u2026`
+        : 'Compressing\u2026',
+      pctBase + pctRange * 0.85,
+    )
+
+    // Gzip in worker
+    // Cast: TS types Uint8Array.buffer as ArrayBufferLike but Blob needs ArrayBuffer.
+    // Safe in browser context (never SharedArrayBuffer).
+    const blob = new Blob([rawData as unknown as ArrayBuffer])
+    const stream = blob.stream().pipeThrough(new CompressionStream('gzip'))
+    const reader = stream.getReader()
+    const chunks: Uint8Array[] = []
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) chunks.push(value)
+    }
+    const compressed = concat(...chunks)
+
     const partValues = parsePartitionKey(partKey)
     const displayParts = Object.values(partValues)
 
@@ -345,24 +399,39 @@ export async function generateProfiles(
       fileName = `profile_${safeName}.pb.gz`
     }
 
-    profiles.push({
+    // Transfer the underlying ArrayBuffer (zero-copy to main thread)
+    const transferBuf = compressed.buffer instanceof ArrayBuffer
+      ? compressed.buffer
+      : compressed.slice().buffer as ArrayBuffer
+    results.push({
       name,
       fileName,
-      data: compressed,
+      data: transferBuf,
       sampleCount: stacks.size,
       rowCount: rows.length,
       partitionValues: partValues,
     })
+
+    partIdx++
   }
 
-  profiles.sort((a, b) => a.name.localeCompare(b.name))
-  return profiles
+  results.sort((a, b) => a.name.localeCompare(b.name))
+
+  const msg: ResultMessage = { type: 'result', profiles: results }
+  const transfers = results.map(r => r.data)
+  ctx.postMessage(msg, transfers as Transferable[])
 }
 
-// Exported for testing
-export {
-  varint, varintBig, fieldVarint, fieldBytes, fieldMessage, concat,
-  PprofBuilder, StringTable,
-  buildStack, getMetricValue, resolveStringValue, resolveNumericValue,
-  parsePartitionKey,
+ctx.onmessage = async (e: MessageEvent) => {
+  try {
+    if (e.data.type === 'generate') {
+      await handleGenerate(e.data)
+    }
+  } catch (err: unknown) {
+    const msg: ErrorMessage = {
+      type: 'error',
+      message: err instanceof Error ? err.message : String(err),
+    }
+    ctx.postMessage(msg)
+  }
 }

@@ -136,13 +136,21 @@ export const Configure: m.Component = {
           ? m('span', { style: 'color: var(--error); font-size: 0.85rem;' }, S.generateError)
           : null,
         S.generating
-          ? m('button.btn.primary', { disabled: true }, [m('.spinner'), ' Generating\u2026'])
+          ? m('button.btn.primary', { disabled: true }, [
+              m('.spinner'),
+              S.progress ? ` ${S.progress.message}` : ' Generating\u2026',
+            ])
           : m('button.btn.primary', {
               disabled: !hasFrames,
               onclick: generate,
               title: hasFrames ? '' : 'Select at least one frame column',
             }, 'Generate profiles'),
       ]),
+
+      // Progress bar
+      S.generating && S.progress ? m('.progress-bar', [
+        m('.progress-fill', { style: `width: ${Math.round(S.progress.pct)}%` }),
+      ]) : null,
     ])
   },
 }
