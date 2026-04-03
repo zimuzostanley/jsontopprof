@@ -2567,19 +2567,21 @@ const Configure = {
           ...metrics.map(
             (col) => m$1(".metric-item", { key: col.name }, [
               m$1(".metric-name", colLabel(col)),
-              m$1("input[type=text].unit-input", {
-                "aria-label": `Unit for ${col.name}`,
-                list: "unit-suggestions",
-                value: S.metricUnits.get(col.name) ?? "count",
-                oninput: (e) => {
-                  S.metricUnits.set(col.name, e.target.value);
-                },
-                placeholder: "unit"
-              }),
-              m$1("button.remove-btn", {
-                onclick: () => removeColumn(col.name),
-                "aria-label": `Remove ${col.name}`
-              }, "×")
+              m$1(".metric-controls", [
+                m$1("input[type=text].unit-input", {
+                  "aria-label": `Unit for ${col.name}`,
+                  list: "unit-suggestions",
+                  value: S.metricUnits.get(col.name) ?? "count",
+                  oninput: (e) => {
+                    S.metricUnits.set(col.name, e.target.value);
+                  },
+                  placeholder: "unit"
+                }),
+                m$1("button.remove-btn", {
+                  onclick: () => removeColumn(col.name),
+                  "aria-label": `Remove ${col.name}`
+                }, "×")
+              ])
             ])
           ),
           m$1(
@@ -3288,7 +3290,8 @@ select { cursor: pointer; }
 }
 .metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.unit-input { width: 180px; font-family: var(--mono) !important; font-size: 0.75rem !important; }
+.metric-controls { display: flex; align-items: center; gap: 4px; width: 180px; justify-content: flex-end; }
+.unit-input { flex: 1; min-width: 0; font-family: var(--mono) !important; font-size: 0.75rem !important; }
 
 /* --- Results --- */
 .profile-list { display: flex; flex-direction: column; gap: 6px; }
