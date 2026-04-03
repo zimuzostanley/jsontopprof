@@ -209,21 +209,46 @@ function buildStack(
 ): string[] {
   const stack: string[] = []
 
-  for (const frameName of frameOrder) {
-    const col = columns.find(c => c.name === frameName)
-    if (!col) continue
+  // Group consecutive JSON array sub-fields from the same source array.
+  // e.g., [path.class, path.count] → one expansion with combined labels.
+  let i = 0
+  while (i < frameOrder.length) {
+    const col = columns.find(c => c.name === frameOrder[i])
+    if (!col) { i++; continue }
 
-    if (col.isJsonArrayField || col.isJsonArray) {
-      // JSON array: expand each element as a frame.
-      // isJsonArrayField: use this key from each object element.
-      // isJsonArray (primitives): use element directly.
-      const raw = row[col.isJsonArrayField ? col.source : col.name] ?? ''
+    if (col.isJsonArrayField && col.jsonKey) {
+      // Collect all consecutive sub-fields from the same array
+      const source = col.source
+      const keys: string[] = [col.jsonKey]
+      let j = i + 1
+      while (j < frameOrder.length) {
+        const next = columns.find(c => c.name === frameOrder[j])
+        if (next?.isJsonArrayField && next.source === source && next.jsonKey) {
+          keys.push(next.jsonKey)
+          j++
+        } else {
+          break
+        }
+      }
+
+      // Expand the array: each element becomes one frame with combined keys
+      const raw = row[source] ?? ''
       try {
         const arr = JSON.parse(raw.trim())
         if (Array.isArray(arr)) {
           for (const elem of arr) {
-            if (col.isJsonArrayField && typeof elem === 'object' && elem !== null && col.jsonKey) {
-              stack.push(String(elem[col.jsonKey] ?? '(unknown)'))
+            if (typeof elem === 'object' && elem !== null) {
+              const primary = String(elem[keys[0]] ?? '(unknown)')
+              if (keys.length === 1) {
+                stack.push(primary)
+              } else {
+                const extra = keys.slice(1)
+                  .map(k => elem[k])
+                  .filter(v => v !== undefined && v !== null)
+                  .map(String)
+                  .join(', ')
+                stack.push(extra ? `${primary} (${extra})` : primary)
+              }
             } else {
               stack.push(String(elem ?? '(null)'))
             }
@@ -232,9 +257,23 @@ function buildStack(
       } catch {
         stack.push(raw || '(parse error)')
       }
+      i = j
+    } else if (col.isJsonArray) {
+      // Primitive JSON array
+      const raw = row[col.name] ?? ''
+      try {
+        const arr = JSON.parse(raw.trim())
+        if (Array.isArray(arr)) {
+          for (const elem of arr) stack.push(String(elem ?? '(null)'))
+        }
+      } catch {
+        stack.push(raw || '(parse error)')
+      }
+      i++
     } else {
       const val = resolveStringValue(row, col)
       stack.push(val || '(empty)')
+      i++
     }
   }
 

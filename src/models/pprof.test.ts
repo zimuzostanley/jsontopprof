@@ -181,6 +181,37 @@ describe('buildStack', () => {
       .toEqual(['Foo', 'Bar'])
   })
 
+  it('combines consecutive JSON array sub-fields into frame label', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'path.class', source: 'path', jsonKey: 'class', isJsonArrayField: true, sampleValues: [], isNumeric: false },
+      { name: 'path.count', source: 'path', jsonKey: 'count', isJsonArrayField: true, sampleValues: [], isNumeric: true },
+    ]
+    const row = { path: '[{"class":"m140.fkj","count":212},{"class":"m140.fmi","count":2354},{"class":"byte[]","count":2354}]' }
+    expect(buildStack(row, ['path.class', 'path.count'], cols))
+      .toEqual(['m140.fkj (212)', 'm140.fmi (2354)', 'byte[] (2354)'])
+  })
+
+  it('combines class + heap_type from same array', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'path.class', source: 'path', jsonKey: 'class', isJsonArrayField: true, sampleValues: [], isNumeric: false },
+      { name: 'path.heap_type', source: 'path', jsonKey: 'heap_type', isJsonArrayField: true, sampleValues: [], isNumeric: false },
+    ]
+    const row = { path: '[{"class":"View","heap_type":"HEAP_TYPE_NATIVE"},{"class":"Bitmap","heap_type":"HEAP_TYPE_APP"}]' }
+    expect(buildStack(row, ['path.class', 'path.heap_type'], cols))
+      .toEqual(['View (HEAP_TYPE_NATIVE)', 'Bitmap (HEAP_TYPE_APP)'])
+  })
+
+  it('mixes regular column + combined JSON array sub-fields', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'process', source: 'process', sampleValues: [], isNumeric: false },
+      { name: 'path.class', source: 'path', jsonKey: 'class', isJsonArrayField: true, sampleValues: [], isNumeric: false },
+      { name: 'path.count', source: 'path', jsonKey: 'count', isJsonArrayField: true, sampleValues: [], isNumeric: true },
+    ]
+    const row = { process: 'server', path: '[{"class":"Foo","count":10},{"class":"Bar","count":20}]' }
+    expect(buildStack(row, ['process', 'path.class', 'path.count'], cols))
+      .toEqual(['server', 'Foo (10)', 'Bar (20)'])
+  })
+
   it('handles primitive JSON arrays', () => {
     const cols: ColumnInfo[] = [
       { name: 'tags', source: 'tags', isJsonArray: true, sampleValues: [], isNumeric: false },
