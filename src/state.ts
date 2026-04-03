@@ -156,9 +156,14 @@ export function loadData(text: string, fileName: string): void {
     if (saved) {
       const restored = deserializeConfig(saved)
       S.roles = restored.roles
-      S.frameOrder = restored.frameOrder.filter(n => S.columns.some(c => c.name === n))
-      S.jsonArrayLabelKey = restored.jsonArrayLabelKey
-      S.metricUnits = restored.metricUnits
+      const colNames = new Set(S.columns.map(c => c.name))
+      S.frameOrder = restored.frameOrder.filter(n => colNames.has(n))
+      S.jsonArrayLabelKey = new Map(
+        [...restored.jsonArrayLabelKey].filter(([n]) => colNames.has(n))
+      )
+      S.metricUnits = new Map(
+        [...restored.metricUnits].filter(([n]) => colNames.has(n))
+      )
       for (const col of S.columns) {
         if (!S.roles.has(col.name)) S.roles.set(col.name, 'none')
       }

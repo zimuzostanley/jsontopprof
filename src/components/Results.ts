@@ -4,6 +4,16 @@ import { formatBytes } from '../utils/format'
 import { GeneratedProfile } from '../models/types'
 
 const selected = new Set<string>()
+let lastProfileSet = ''
+
+function syncSelection(): void {
+  const currentSet = S.profiles.map(p => p.fileName).sort().join('\0')
+  if (currentSet !== lastProfileSet) {
+    selected.clear()
+    for (const p of S.profiles) selected.add(p.fileName)
+    lastProfileSet = currentSet
+  }
+}
 
 function toggleSelect(fileName: string): void {
   if (selected.has(fileName)) selected.delete(fileName)
@@ -25,21 +35,14 @@ function downloadSelected(): void {
 }
 
 export const Results: m.Component = {
-  oninit() {
-    // Auto-select all on first render
-    selectAll()
-  },
-
   view() {
     const profiles = S.profiles
     if (profiles.length === 0) {
       return m('.card', m('p', { style: 'color: var(--text-secondary);' }, 'No profiles generated yet.'))
     }
 
-    // Clean up selection if profiles changed
-    for (const key of selected) {
-      if (!profiles.some(p => p.fileName === key)) selected.delete(key)
-    }
+    // Auto-select all when profile set changes (new generation)
+    syncSelection()
 
     const totalRows = profiles.reduce((s, p) => s + p.rowCount, 0)
     const totalSamples = profiles.reduce((s, p) => s + p.sampleCount, 0)

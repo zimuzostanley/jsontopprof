@@ -64,6 +64,7 @@ async function handleGenerate(req: GenerateRequest): Promise<void> {
     }
   })
 
+  progress('Done', 100)
   const msg: ResultMessage = { type: 'result', profiles: results }
   ctx.postMessage(msg, results.map(r => r.data) as Transferable[])
 }
