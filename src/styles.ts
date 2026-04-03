@@ -353,6 +353,7 @@ select { cursor: pointer; }
 .profile-name { font-weight: 600; font-size: 0.9rem; }
 .profile-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 1px; }
 .profile-file { font-family: var(--mono); font-size: 0.72rem; color: var(--text-tertiary); }
+.profile-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .checkbox-accent { cursor: pointer; accent-color: var(--accent); }
 
 /* --- Steps --- */

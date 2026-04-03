@@ -2,6 +2,55 @@ import m from 'mithril'
 import { S, downloadProfile } from '../state'
 import { formatBytes } from '../utils/format'
 import { TextView } from './TextView'
+import type { GeneratedProfile } from '../models/types'
+
+function openInPerfetto(profile: GeneratedProfile): void {
+  const win = window.open('https://ui.perfetto.dev', '_blank')
+  if (!win) return
+
+  // Decompress gzip to get raw protobuf (Perfetto expects uncompressed)
+  const blob = new Blob([profile.data as unknown as ArrayBuffer])
+  const ds = new DecompressionStream('gzip')
+  const reader = blob.stream().pipeThrough(ds).getReader()
+  const chunks: Uint8Array[] = []
+
+  ;(async () => {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) chunks.push(value)
+    }
+    let len = 0
+    for (const c of chunks) len += c.length
+    const raw = new Uint8Array(len)
+    let off = 0
+    for (const c of chunks) { raw.set(c, off); off += c.length }
+
+    // Wait for Perfetto to be ready
+    const trySend = () => {
+      win.postMessage('PING', '*')
+    }
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.data !== 'PONG') return
+      window.removeEventListener('message', onMessage)
+      win.postMessage({
+        perfetto: {
+          buffer: raw.buffer,
+          title: profile.name,
+          fileName: profile.fileName.replace('.gz', ''),
+        },
+      }, '*')
+    }
+
+    window.addEventListener('message', onMessage)
+    // Retry PING until PONG received (Perfetto may take a moment to load)
+    const interval = setInterval(trySend, 500)
+    trySend()
+    // Stop retrying after 15s
+    setTimeout(() => { clearInterval(interval); window.removeEventListener('message', onMessage) }, 15000)
+  })()
+}
 
 const selected = new Set<string>()
 let lastProfileSet = ''
@@ -53,14 +102,8 @@ export const Results: m.Component = {
 
     return m('div', [
       // Summary card with view toggle
-      // Hint: open in Perfetto
       m('.card.hint-card', [
-        m('.hint-text', [
-          'Download and open in ',
-          m('strong', 'Perfetto UI'),
-          ' at ',
-          m('code.code-inline', 'ui.perfetto.dev'),
-        ]),
+        m('.hint-text', 'Click Perfetto to open directly in ui.perfetto.dev, or Download to save.'),
       ]),
 
       // Summary
@@ -118,10 +161,16 @@ export const Results: m.Component = {
             ]),
             m('.profile-file', p.fileName),
           ]),
-          m('button.btn.sm.primary', {
-            onclick: () => downloadProfile(p),
-            'aria-label': `Download ${p.fileName}`,
-          }, 'Download'),
+          m('.profile-actions', [
+            m('button.btn.sm', {
+              onclick: () => openInPerfetto(p),
+              'aria-label': `Open ${p.name} in Perfetto`,
+            }, 'Perfetto'),
+            m('button.btn.sm.primary', {
+              onclick: () => downloadProfile(p),
+              'aria-label': `Download ${p.fileName}`,
+            }, 'Download'),
+          ]),
         ])
       )) : null,
 
