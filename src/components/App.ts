@@ -4,6 +4,9 @@ import { Import } from './Import'
 import { Configure } from './Configure'
 import { Results } from './Results'
 
+const STEPS = ['import', 'configure', 'results'] as const
+const STEP_LABELS = ['1. Import', '2. Configure', '3. Profiles']
+
 export const App: m.Component = {
   oninit() {
     applyTheme(S.theme)
@@ -24,26 +27,25 @@ export const App: m.Component = {
         ]),
       ]),
 
-      S.data ? m('.steps', [
-        m('button.step-btn', {
-          class: S.step === 'import' ? 'active' : '',
-          onclick: () => { S.step = 'import' },
-        }, '1. Import'),
-        m('button.step-btn', {
-          class: S.step === 'configure' ? 'active' : '',
-          disabled: !S.data,
-          onclick: () => { if (S.data) S.step = 'configure' },
-        }, '2. Configure'),
-        m('button.step-btn', {
-          class: S.step === 'results' ? 'active' : '',
-          disabled: S.profiles.length === 0,
-          onclick: () => { if (S.profiles.length > 0) S.step = 'results' },
-        }, '3. Profiles'),
-      ]) : null,
+      S.data
+        ? m('.steps', STEPS.map((step, i) =>
+            m('button.step-btn', {
+              key: step,
+              class: S.step === step ? 'active' : '',
+              disabled: step === 'results' && S.profiles.length === 0,
+              onclick: () => {
+                if (step === 'results' && S.profiles.length === 0) return
+                S.step = step
+              },
+            }, STEP_LABELS[i])
+          ))
+        : null,
 
-      S.step === 'import' ? m(Import) : null,
-      S.step === 'configure' ? m(Configure) : null,
-      S.step === 'results' ? m(Results) : null,
+      m('.content', [
+        S.step === 'import' ? m(Import) : null,
+        S.step === 'configure' ? m(Configure) : null,
+        S.step === 'results' ? m(Results) : null,
+      ]),
     ])
   },
 }

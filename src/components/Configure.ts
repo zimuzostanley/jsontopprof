@@ -9,8 +9,9 @@ const ROLES: { key: ColumnRole; label: string }[] = [
   { key: 'partition', label: 'Partition' },
 ]
 
-const UNIT_OPTIONS = [
+const UNIT_SUGGESTIONS = [
   'bytes', 'count', 'nanoseconds', 'microseconds', 'milliseconds', 'seconds',
+  'objects', 'pages', 'requests', 'errors',
 ]
 
 function isJsonParent(colName: string): boolean {
@@ -33,7 +34,7 @@ export const Configure: m.Component = {
         m('.col-list', S.columns.map(col => {
           // JSON parent columns — informational only, not assignable
           if (col.source === col.name && !col.jsonKey && isJsonParent(col.name)) {
-            return m('.col-row.json-parent', [
+            return m('.col-row.json-parent', { key: `parent:${col.name}` }, [
               m('span', `${col.name} `),
               m('span', { style: 'font-style: italic;' }, '(JSON object \u2014 sub-fields below)'),
             ])
@@ -113,16 +114,22 @@ export const Configure: m.Component = {
           ...metricColumns.map(col =>
             m('.metric-item', { key: col.name }, [
               m('.metric-name', col.name),
-              m('select', {
+              m('input[type=text]', {
                 'aria-label': `Unit for ${col.name}`,
+                list: 'unit-suggestions',
                 value: S.metricUnits.get(col.name) ?? 'count',
-                onchange: (e: Event) => {
-                  S.metricUnits.set(col.name, (e.target as HTMLSelectElement).value)
+                oninput: (e: InputEvent) => {
+                  S.metricUnits.set(col.name, (e.target as HTMLInputElement).value)
                 },
-              }, UNIT_OPTIONS.map(u => m('option', { value: u }, u))),
+                placeholder: 'unit',
+                style: 'width: 120px;',
+              }),
             ])
           ),
-          m('.metric-item', [
+          m('datalist#unit-suggestions', { key: '_datalist' },
+            UNIT_SUGGESTIONS.map(u => m('option', { value: u })),
+          ),
+          m('.metric-item', { key: '_rows' }, [
             m('.metric-name', 'rows'),
             m('.rows-badge', 'auto \u2014 count of input rows'),
           ]),
