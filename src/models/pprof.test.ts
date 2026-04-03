@@ -160,7 +160,7 @@ describe('buildStack', () => {
       { name: 'module', source: 'module', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ module: 'libc', func: 'malloc' }, ['module', 'func'], cols, []).stack)
+    expect(buildStack({ module: 'libc', func: 'malloc' }, ['module', 'func'], cols).stack)
       .toEqual(['libc', 'malloc'])
   })
 
@@ -169,7 +169,7 @@ describe('buildStack', () => {
       { name: 'meta.region', source: 'meta', jsonKey: 'region', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ meta: '{"region":"us"}', func: 'foo' }, ['meta.region', 'func'], cols, []).stack)
+    expect(buildStack({ meta: '{"region":"us"}', func: 'foo' }, ['meta.region', 'func'], cols).stack)
       .toEqual(['us', 'foo'])
   })
 
@@ -177,7 +177,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'path.class', source: 'path', jsonKey: 'class', isJsonArrayField: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ path: '[{"class":"Foo"},{"class":"Bar"}]' }, ['path.class'], cols, []).stack)
+    expect(buildStack({ path: '[{"class":"Foo"},{"class":"Bar"}]' }, ['path.class'], cols).stack)
       .toEqual(['Foo', 'Bar'])
   })
 
@@ -187,7 +187,7 @@ describe('buildStack', () => {
       { name: 'path.count', source: 'path', jsonKey: 'count', isJsonArrayField: true, sampleValues: [], isNumeric: true },
     ]
     const row = { path: '[{"class":"m140.fkj","count":212},{"class":"m140.fmi","count":2354},{"class":"byte[]","count":2354}]' }
-    expect(buildStack(row, ['path.class', 'path.count'], cols, []).stack)
+    expect(buildStack(row, ['path.class', 'path.count'], cols).stack)
       .toEqual(['m140.fkj (212)', 'm140.fmi (2354)', 'byte[] (2354)'])
   })
 
@@ -197,7 +197,7 @@ describe('buildStack', () => {
       { name: 'path.heap_type', source: 'path', jsonKey: 'heap_type', isJsonArrayField: true, sampleValues: [], isNumeric: false },
     ]
     const row = { path: '[{"class":"View","heap_type":"HEAP_TYPE_NATIVE"},{"class":"Bitmap","heap_type":"HEAP_TYPE_APP"}]' }
-    expect(buildStack(row, ['path.class', 'path.heap_type'], cols, []).stack)
+    expect(buildStack(row, ['path.class', 'path.heap_type'], cols).stack)
       .toEqual(['View (HEAP_TYPE_NATIVE)', 'Bitmap (HEAP_TYPE_APP)'])
   })
 
@@ -208,7 +208,7 @@ describe('buildStack', () => {
       { name: 'path.count', source: 'path', jsonKey: 'count', isJsonArrayField: true, sampleValues: [], isNumeric: true },
     ]
     const row = { process: 'server', path: '[{"class":"Foo","count":10},{"class":"Bar","count":20}]' }
-    expect(buildStack(row, ['process', 'path.class', 'path.count'], cols, []).stack)
+    expect(buildStack(row, ['process', 'path.class', 'path.count'], cols).stack)
       .toEqual(['server', 'Foo (10)', 'Bar (20)'])
   })
 
@@ -216,7 +216,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'tags', source: 'tags', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ tags: '["a","b","c"]' }, ['tags'], cols, []).stack)
+    expect(buildStack({ tags: '["a","b","c"]' }, ['tags'], cols).stack)
       .toEqual(['a', 'b', 'c'])
   })
 
@@ -224,7 +224,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'arr', source: 'arr', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ arr: '[null, "x"]' }, ['arr'], cols, []).stack)
+    expect(buildStack({ arr: '[null, "x"]' }, ['arr'], cols).stack)
       .toEqual(['(null)', 'x'])
   })
 
@@ -232,11 +232,11 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ func: '' }, ['func'], cols, []).stack).toEqual(['(empty)'])
+    expect(buildStack({ func: '' }, ['func'], cols).stack).toEqual(['(empty)'])
   })
 
   it('shows (no frames) when no frame columns', () => {
-    expect(buildStack({}, [], [], []).stack).toEqual(['(no frames)'])
+    expect(buildStack({}, [], []).stack).toEqual(['(no frames)'])
   })
 
   it('handles malformed JSON gracefully', () => {
@@ -244,13 +244,13 @@ describe('buildStack', () => {
       { name: 'path', source: 'path', isJsonArray: true, sampleValues: [], isNumeric: false },
     ]
     // Non-JSON is used as literal frame value
-    expect(buildStack({ path: 'not-json' }, ['path'], cols, []).stack)
+    expect(buildStack({ path: 'not-json' }, ['path'], cols).stack)
       .toEqual(['not-json'])
     // Truly broken JSON (starts with [ but invalid) falls back to raw
-    expect(buildStack({ path: '[broken' }, ['path'], cols, []).stack)
+    expect(buildStack({ path: '[broken' }, ['path'], cols).stack)
       .toEqual(['[broken'])
     // Empty string gets placeholder
-    expect(buildStack({ path: '' }, ['path'], cols, []).stack)
+    expect(buildStack({ path: '' }, ['path'], cols).stack)
       .toEqual(['(parse error)'])
   })
 
@@ -258,7 +258,7 @@ describe('buildStack', () => {
     const cols: ColumnInfo[] = [
       { name: 'meta.missing', source: 'meta', jsonKey: 'missing', sampleValues: [], isNumeric: false },
     ]
-    expect(buildStack({ meta: '{"other":1}' }, ['meta.missing'], cols, []).stack)
+    expect(buildStack({ meta: '{"other":1}' }, ['meta.missing'], cols).stack)
       .toEqual(['(empty)'])
   })
 })

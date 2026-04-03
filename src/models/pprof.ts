@@ -211,18 +211,17 @@ function buildStack(
   row: Record<string, string>,
   frameOrder: string[],
   columns: ColumnInfo[],
-  metricColumns: ColumnInfo[],
 ): StackResult {
   const stack: string[] = []
   const frameValues: Record<string, number>[] = []
 
-  // Collect metric column names that come from JSON arrays (for per-frame values)
-  const arrayMetricKeys = new Map<string, string[]>() // source → [jsonKey, ...]
-  for (const mc of metricColumns) {
-    if (mc.isJsonArrayField && mc.jsonKey) {
-      const keys = arrayMetricKeys.get(mc.source) ?? []
-      keys.push(mc.jsonKey)
-      arrayMetricKeys.set(mc.source, keys)
+  // Collect all numeric JSON array sub-field keys for per-frame values
+  const arrayNumericKeys = new Map<string, string[]>() // source → [jsonKey, ...]
+  for (const c of columns) {
+    if (c.isJsonArrayField && c.jsonKey && c.isNumeric) {
+      const keys = arrayNumericKeys.get(c.source) ?? []
+      keys.push(c.jsonKey)
+      arrayNumericKeys.set(c.source, keys)
     }
   }
 
@@ -246,7 +245,7 @@ function buildStack(
       }
 
       const raw = row[source] ?? ''
-      const metricKeys = arrayMetricKeys.get(source) ?? []
+      const numKeys = arrayNumericKeys.get(source) ?? []
       try {
         const arr = JSON.parse(raw.trim())
         if (Array.isArray(arr)) {
@@ -265,7 +264,7 @@ function buildStack(
               }
               // Capture per-frame numeric values
               const fv: Record<string, number> = {}
-              for (const mk of metricKeys) {
+              for (const mk of numKeys) {
                 const v = Number(elem[mk])
                 if (!isNaN(v)) fv[`${source}.${mk}`] = v
               }
@@ -385,10 +384,6 @@ export async function generateProfiles(
     .filter(([, role]) => role === 'metric')
     .map(([name]) => name)
 
-  const metricColumnInfos = metricColumns
-    .map(name => columns.find(c => c.name === name))
-    .filter((c): c is ColumnInfo => c !== undefined)
-
   const labelColumnNames = [...config.roles.entries()]
     .filter(([, role]) => role === 'label')
     .map(([name]) => name)
@@ -444,7 +439,7 @@ export async function generateProfiles(
 
     if (hasLabels) {
       for (const row of rows) {
-        const sr = buildStack(row, config.frameOrder, columns, metricColumnInfos)
+        const sr = buildStack(row, config.frameOrder, columns)
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
         const sampleLabels = buildLabels(row, labelColumnInfos)
@@ -456,7 +451,7 @@ export async function generateProfiles(
     } else {
       const stacks = new Map<string, { sr: StackResult; values: number[] }>()
       for (const row of rows) {
-        const sr = buildStack(row, config.frameOrder, columns, metricColumnInfos)
+        const sr = buildStack(row, config.frameOrder, columns)
         const stackKey = sr.stack.join('\x00')
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
@@ -502,7 +497,7 @@ export async function generateProfiles(
       fileName,
       data: compressed,
       sampleCount: hasLabels ? rows.length : new Set(
-        rows.map(row => buildStack(row, config.frameOrder, columns, metricColumnInfos).stack.join('\x00'))
+        rows.map(row => buildStack(row, config.frameOrder, columns).stack.join('\x00'))
       ).size,
       rowCount: rows.length,
       partitionValues: partValues,
