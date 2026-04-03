@@ -119,11 +119,11 @@ export const Results: m.Component = {
 
       // Usage hint
       m('.card.section-gap.hint-card', [
-        m('.card-title', 'Usage'),
-        m('div', { style: 'font-size: 0.8rem; color: var(--text-secondary); line-height: 1.8;' }, [
-          m('code.code-inline', 'pprof -http=:8080 profile.pb.gz'),
-          m('br'),
-          'or open in Perfetto UI at ',
+        m('.card-title', 'View profiles'),
+        m('.hint-text', [
+          'Upload to ',
+          m('strong', 'Perfetto UI'),
+          ' at ',
           m('code.code-inline', 'ui.perfetto.dev'),
         ]),
       ]),

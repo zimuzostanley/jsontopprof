@@ -129,7 +129,7 @@ export const TextView: m.Component = {
           ]),
         ]),
         metricNames.length > 0
-          ? m('.col-role', metricNames.map(name =>
+          ? m('.metric-toggles', metricNames.map(name =>
               m('button.role-btn', {
                 key: name,
                 class: metrics.has(name) ? 'active' : '',
@@ -138,7 +138,7 @@ export const TextView: m.Component = {
             ))
           : null,
         showLabels
-          ? m('div', { style: 'margin-top: 6px; font-size: 0.72rem; color: var(--text-tertiary);' },
+          ? m('.empty-hint', { style: 'margin-top: 6px;' },
               'Labels shown automatically in brackets')
           : null,
       ]),
