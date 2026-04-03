@@ -2505,10 +2505,6 @@ const Configure = {
           }
           const role = S.roles.get(col.name) ?? "none";
           return m$1(".col-row", { key: col.name }, [
-            m$1(".col-name", [
-              col.jsonKey !== void 0 ? [m$1("span.json-prefix", `${col.source}.`), col.jsonKey] : col.isJsonArray ? [col.name, " ", m$1("span.json-prefix", "[array]")] : col.name
-            ]),
-            m$1(".col-samples", col.sampleValues.join(", ") || "—"),
             m$1(
               ".col-role",
               ROLES.filter((r) => r.key !== "metric" || col.isNumeric).map(
@@ -2517,7 +2513,11 @@ const Configure = {
                   onclick: () => setRole(col.name, r.key)
                 }, r.label)
               )
-            )
+            ),
+            m$1(".col-name", [
+              col.jsonKey !== void 0 ? [m$1("span.json-prefix", `${col.source}.`), col.jsonKey] : col.isJsonArray ? [col.name, " ", m$1("span.json-prefix", "[array]")] : col.name
+            ]),
+            m$1(".col-samples", col.sampleValues.join(", ") || "—")
           ]);
         }))
       ]),
@@ -3170,7 +3170,7 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 
 .col-row {
   display: grid;
-  grid-template-columns: 170px 1fr auto;
+  grid-template-columns: auto 160px 1fr;
   gap: 10px;
   align-items: center;
   padding: 5px 10px;
