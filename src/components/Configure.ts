@@ -6,6 +6,7 @@ const ROLES: { key: ColumnRole; label: string }[] = [
   { key: 'none', label: 'Skip' },
   { key: 'frame', label: 'Frame' },
   { key: 'metric', label: 'Metric' },
+  { key: 'label', label: 'Label' },
   { key: 'partition', label: 'Partition' },
 ]
 

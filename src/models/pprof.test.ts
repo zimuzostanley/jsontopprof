@@ -3,8 +3,9 @@ import {
   varint, varintBig, concat, fieldVarint,
   PprofBuilder, StringTable,
   buildStack, getMetricValue, resolveStringValue, resolveNumericValue,
-  parsePartitionKey, generateProfiles,
+  parsePartitionKey, buildLabels, generateProfiles,
 } from './pprof'
+import type { SampleLabel } from './pprof'
 import { parseTSV, analyzeColumns, suggestDefaults } from './tsv'
 import { ColumnInfo, ProfileConfig } from './types'
 import {
@@ -63,22 +64,45 @@ describe('StringTable', () => {
 describe('PprofBuilder', () => {
   it('produces non-empty output', () => {
     const b = new (PprofBuilder as any)(['size', 'rows'], ['bytes', 'count'])
-    b.addSample(['root', 'leaf'], [100, 1])
+    b.addSample(['root', 'leaf'], [100, 1], [])
     expect(b.encode().length).toBeGreaterThan(0)
   })
 
   it('deduplicates functions and locations', () => {
     const b = new (PprofBuilder as any)(['count'], ['objects'])
-    b.addSample(['a', 'b'], [10])
-    b.addSample(['a', 'c'], [20])
+    b.addSample(['a', 'b'], [10], [])
+    b.addSample(['a', 'c'], [20], [])
     expect(b.encode().length).toBeGreaterThan(0)
   })
 
   it('clamps negative values to zero', () => {
     const b = new (PprofBuilder as any)(['val'], ['count'])
-    // Should not throw; negative values clamped to 0
-    b.addSample(['frame'], [-5])
+    b.addSample(['frame'], [-5], [])
     expect(b.encode().length).toBeGreaterThan(0)
+  })
+
+  it('encodes string labels', () => {
+    const b = new (PprofBuilder as any)(['count'], ['objects'])
+    b.addSample(['frame'], [10], [{ key: 'thread', value: 'main', isNumeric: false }])
+    const data = b.encode()
+    expect(data.length).toBeGreaterThan(0)
+  })
+
+  it('encodes numeric labels', () => {
+    const b = new (PprofBuilder as any)(['count'], ['objects'])
+    b.addSample(['frame'], [10], [{ key: 'pid', value: '1234', isNumeric: true }])
+    const data = b.encode()
+    expect(data.length).toBeGreaterThan(0)
+  })
+
+  it('encodes multiple labels per sample', () => {
+    const b = new (PprofBuilder as any)(['count'], ['objects'])
+    b.addSample(['frame'], [10], [
+      { key: 'thread', value: 'main', isNumeric: false },
+      { key: 'pid', value: '42', isNumeric: true },
+    ])
+    const data = b.encode()
+    expect(data.length).toBeGreaterThan(0)
   })
 })
 
@@ -470,7 +494,7 @@ describe('generateProfiles', () => {
     }
   })
 
-  it('generates correct partition filenames', async () => {
+  it('generates partition filenames with timestamps', async () => {
     const data = parseTSV('name\tenv\nfoo\tprod\nbar\tstaging')
     const cols = analyzeColumns(data)
 
@@ -481,8 +505,10 @@ describe('generateProfiles', () => {
       metricUnits: new Map(),
     })
     expect(profiles.length).toBe(2)
-    const fileNames = profiles.map(p => p.fileName).sort()
-    expect(fileNames).toEqual(['profile_prod.pb.gz', 'profile_staging.pb.gz'])
+    // Filenames should contain partition value and timestamp
+    for (const p of profiles) {
+      expect(p.fileName).toMatch(/^profile_(prod|staging)_\d{8}_\d{6}\.pb\.gz$/)
+    }
   })
 
   it('handles single row', async () => {
@@ -512,5 +538,136 @@ describe('generateProfiles', () => {
     })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].sampleCount).toBe(2)
+  })
+
+  it('attaches string labels to samples', async () => {
+    const data = parseTSV('func\tthread\tsize\nfoo\tmain\t100\nbar\tworker\t200\nfoo\tworker\t50')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['func', 'frame'], ['thread', 'label'], ['size', 'metric']]),
+      frameOrder: ['func'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes']]),
+    })
+    expect(profiles).toHaveLength(1)
+    // With labels, each row is its own sample (no aggregation across labels)
+    expect(profiles[0].sampleCount).toBe(3)
+    expect(profiles[0].rowCount).toBe(3)
+  })
+
+  it('attaches numeric labels', async () => {
+    const data = parseTSV('func\tpid\tsize\nfoo\t1234\t100\nbar\t5678\t200')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['func', 'frame'], ['pid', 'label'], ['size', 'metric']]),
+      frameOrder: ['func'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes']]),
+    })
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].sampleCount).toBe(2)
+  })
+
+  it('supports multiple labels simultaneously', async () => {
+    const data = parseTSV('func\tthread\tpid\tsize\nfoo\tmain\t100\t1024')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['func', 'frame'], ['thread', 'label'], ['pid', 'label'], ['size', 'metric']]),
+      frameOrder: ['func'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes']]),
+    })
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].sampleCount).toBe(1)
+  })
+
+  it('supports labels + partitions + multiple frames + multiple metrics', async () => {
+    const tsv = [
+      'module\tfunc\tthread\tenv\tsize\tcount',
+      'libc\tmalloc\tmain\tprod\t100\t10',
+      'libc\tfree\tworker\tprod\t0\t5',
+      'app\trender\tmain\tstaging\t200\t20',
+      'app\tparse\tworker\tstaging\t50\t8',
+    ].join('\n')
+    const data = parseTSV(tsv)
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([
+        ['module', 'frame'],
+        ['func', 'frame'],
+        ['thread', 'label'],
+        ['env', 'partition'],
+        ['size', 'metric'],
+        ['count', 'metric'],
+      ]),
+      frameOrder: ['module', 'func'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes'], ['count', 'count']]),
+    })
+    // 2 envs = 2 profiles
+    expect(profiles.length).toBe(2)
+    const prod = profiles.find(p => p.name === 'prod')!
+    const staging = profiles.find(p => p.name === 'staging')!
+    expect(prod.rowCount).toBe(2)
+    expect(staging.rowCount).toBe(2)
+    // With labels, no aggregation: each row is a sample
+    expect(prod.sampleCount).toBe(2)
+    expect(staging.sampleCount).toBe(2)
+  })
+
+  it('includes timestamps in filenames', async () => {
+    const data = parseTSV('name\nfoo')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame']]),
+      frameOrder: ['name'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map(),
+    })
+    expect(profiles[0].fileName).toMatch(/^profile_\d{8}_\d{6}\.pb\.gz$/)
+  })
+})
+
+// ── buildLabels ──
+
+describe('buildLabels', () => {
+  it('builds string labels', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'thread', source: 'thread', sampleValues: [], isNumeric: false },
+    ]
+    const labels = buildLabels({ thread: 'main' }, cols)
+    expect(labels).toEqual([{ key: 'thread', value: 'main', isNumeric: false }])
+  })
+
+  it('builds numeric labels', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'pid', source: 'pid', sampleValues: [], isNumeric: true },
+    ]
+    const labels = buildLabels({ pid: '1234' }, cols)
+    expect(labels).toEqual([{ key: 'pid', value: '1234', isNumeric: true }])
+  })
+
+  it('builds multiple labels', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'thread', source: 'thread', sampleValues: [], isNumeric: false },
+      { name: 'pid', source: 'pid', sampleValues: [], isNumeric: true },
+    ]
+    const labels = buildLabels({ thread: 'main', pid: '42' }, cols)
+    expect(labels).toHaveLength(2)
+    expect(labels[0].key).toBe('thread')
+    expect(labels[1].key).toBe('pid')
+  })
+
+  it('builds labels from JSON sub-fields', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'meta.team', source: 'meta', jsonKey: 'team', sampleValues: [], isNumeric: false },
+    ]
+    const labels = buildLabels({ meta: '{"team":"backend"}' }, cols)
+    expect(labels).toEqual([{ key: 'meta.team', value: 'backend', isNumeric: false }])
   })
 })

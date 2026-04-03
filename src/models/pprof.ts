@@ -1,8 +1,8 @@
 import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './types'
 
 // ── Protobuf wire format ──
-// Encodes fields per the protobuf binary wire format spec.
 // Wire type 0 = varint, wire type 2 = length-delimited.
+// Field numbers per google/pprof/profile.proto.
 
 function varint(value: number): Uint8Array {
   if (value > 0xFFFFFFFF) return varintBig(BigInt(value))
@@ -76,6 +76,15 @@ class StringTable {
   }
 }
 
+// ── Pprof Sample.Label ──
+// Per profile.proto: Label { key=1, str=2, num=3, num_unit=4 }
+
+interface SampleLabel {
+  key: string
+  value: string
+  isNumeric: boolean
+}
+
 // ── Pprof builder ──
 
 class PprofBuilder {
@@ -119,15 +128,36 @@ class PprofBuilder {
     return lid
   }
 
-  addSample(stack: string[], values: number[]): void {
+  addSample(stack: string[], values: number[], labels: SampleLabel[]): void {
     const parts: Uint8Array[] = []
     // pprof expects leaf-first
     for (let i = stack.length - 1; i >= 0; i--) {
       const fid = this.getFunctionId(stack[i])
       parts.push(fieldVarint(1, this.getLocationId(fid)))
     }
+    // Sample.value (field 2)
     for (const v of values) {
       parts.push(fieldVarint(2, Math.max(0, v)))
+    }
+    // Sample.label (field 3) — per profile.proto Label message
+    for (const lbl of labels) {
+      const keyIdx = this.strings.intern(lbl.key)
+      let labelBytes: Uint8Array
+      if (lbl.isNumeric) {
+        const n = Number(lbl.value)
+        const numVal = isNaN(n) ? 0 : Math.round(n)
+        labelBytes = concat(
+          fieldVarint(1, keyIdx),  // Label.key
+          fieldVarint(3, numVal),  // Label.num
+        )
+      } else {
+        const strIdx = this.strings.intern(lbl.value)
+        labelBytes = concat(
+          fieldVarint(1, keyIdx),  // Label.key
+          fieldVarint(2, strIdx),  // Label.str
+        )
+      }
+      parts.push(fieldMessage(3, labelBytes))
     }
     this.samples.push(fieldMessage(2, concat(...parts)))
   }
@@ -155,8 +185,6 @@ class PprofBuilder {
 }
 
 // ── Column value resolution ──
-// Single place for reading a value from a row given a ColumnInfo,
-// handling regular columns, JSON sub-fields, and JSON arrays.
 
 function resolveStringValue(row: Record<string, string>, col: ColumnInfo): string {
   if (col.jsonKey !== undefined) {
@@ -227,6 +255,16 @@ function getMetricValue(
   return resolveNumericValue(row, col)
 }
 
+function buildLabels(
+  row: Record<string, string>,
+  labelColumns: ColumnInfo[],
+): SampleLabel[] {
+  return labelColumns.map(col => {
+    const value = resolveStringValue(row, col)
+    return { key: col.name, value, isNumeric: col.isNumeric }
+  })
+}
+
 function getPartitionKey(
   row: Record<string, string>,
   partitionColumns: string[],
@@ -245,19 +283,20 @@ function parsePartitionKey(partKey: string): Record<string, string> {
   const result: Record<string, string> = {}
   for (const part of partKey.split('|')) {
     const eq = part.indexOf('=')
-    if (eq >= 0) {
-      result[part.slice(0, eq)] = part.slice(eq + 1)
-    }
+    if (eq >= 0) result[part.slice(0, eq)] = part.slice(eq + 1)
   }
   return result
+}
+
+function timestamp(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
 }
 
 // ── Gzip ──
 
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
-  // Cast needed: TS types Uint8Array.buffer as ArrayBufferLike which
-  // includes SharedArrayBuffer, but Blob only accepts ArrayBuffer.
-  // Safe because browser Uint8Array never uses SharedArrayBuffer.
   const stream = new Blob([data as unknown as ArrayBuffer]).stream()
     .pipeThrough(new CompressionStream('gzip'))
   const reader = stream.getReader()
@@ -285,6 +324,14 @@ export async function generateProfiles(
     .filter(([, role]) => role === 'metric')
     .map(([name]) => name)
 
+  const labelColumnNames = [...config.roles.entries()]
+    .filter(([, role]) => role === 'label')
+    .map(([name]) => name)
+
+  const labelColumnInfos = labelColumnNames
+    .map(name => columns.find(c => c.name === name))
+    .filter((c): c is ColumnInfo => c !== undefined)
+
   const partitionColumns = [...config.roles.entries()]
     .filter(([, role]) => role === 'partition')
     .map(([name]) => name)
@@ -304,28 +351,44 @@ export async function generateProfiles(
     bucket.push(row)
   }
 
+  const ts = timestamp()
   const profiles: GeneratedProfile[] = []
 
   for (const [partKey, rows] of partitions) {
     const builder = new PprofBuilder(allMetricNames, allMetricUnits)
-    const stacks = new Map<string, { stack: string[]; values: number[] }>()
 
-    for (const row of rows) {
-      const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
-      const stackKey = stack.join('\x00')
-      const values = metricColumns.map(name => getMetricValue(row, name, columns))
-      values.push(1) // rows
+    // When labels are present, each unique (stack + labels) combination
+    // is a separate sample. Without labels, aggregate by stack only.
+    const hasLabels = labelColumnInfos.length > 0
 
-      const existing = stacks.get(stackKey)
-      if (existing) {
-        for (let i = 0; i < values.length; i++) existing.values[i] += values[i]
-      } else {
-        stacks.set(stackKey, { stack, values })
+    if (hasLabels) {
+      // With labels: each row becomes its own sample (labels vary per row)
+      for (const row of rows) {
+        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
+        const values = metricColumns.map(name => getMetricValue(row, name, columns))
+        values.push(1)
+        const labels = buildLabels(row, labelColumnInfos)
+        builder.addSample(stack, values, labels)
       }
-    }
+    } else {
+      // Without labels: aggregate by stack
+      const stacks = new Map<string, { stack: string[]; values: number[] }>()
+      for (const row of rows) {
+        const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
+        const stackKey = stack.join('\x00')
+        const values = metricColumns.map(name => getMetricValue(row, name, columns))
+        values.push(1)
 
-    for (const { stack, values } of stacks.values()) {
-      builder.addSample(stack, values)
+        const existing = stacks.get(stackKey)
+        if (existing) {
+          for (let i = 0; i < values.length; i++) existing.values[i] += values[i]
+        } else {
+          stacks.set(stackKey, { stack, values })
+        }
+      }
+      for (const { stack, values } of stacks.values()) {
+        builder.addSample(stack, values, [])
+      }
     }
 
     const compressed = await gzipCompress(builder.encode())
@@ -336,20 +399,22 @@ export async function generateProfiles(
     let fileName: string
     if (partKey === '') {
       name = 'profile'
-      fileName = 'profile.pb.gz'
+      fileName = `profile_${ts}.pb.gz`
     } else {
       name = displayParts.join(' / ')
       const safeName = displayParts
         .map(p => p.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40))
         .join('_')
-      fileName = `profile_${safeName}.pb.gz`
+      fileName = `profile_${safeName}_${ts}.pb.gz`
     }
 
     profiles.push({
       name,
       fileName,
       data: compressed,
-      sampleCount: stacks.size,
+      sampleCount: hasLabels ? rows.length : new Set(
+        rows.map(row => buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey).join('\x00'))
+      ).size,
       rowCount: rows.length,
       partitionValues: partValues,
     })
@@ -364,5 +429,6 @@ export {
   varint, varintBig, fieldVarint, fieldBytes, fieldMessage, concat,
   PprofBuilder, StringTable,
   buildStack, getMetricValue, resolveStringValue, resolveNumericValue,
-  parsePartitionKey,
+  parsePartitionKey, buildLabels, timestamp,
 }
+export type { SampleLabel }

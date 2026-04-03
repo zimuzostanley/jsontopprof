@@ -22,8 +22,15 @@ export interface ColumnInfo {
   isNumeric: boolean
 }
 
-/** Role assigned to a column */
-export type ColumnRole = 'none' | 'frame' | 'metric' | 'partition'
+/**
+ * Role assigned to a column:
+ * - 'none': ignored
+ * - 'frame': values form the call stack (root to leaf)
+ * - 'metric': numeric values aggregated as pprof sample types
+ * - 'label': values attached as pprof Sample.label metadata
+ * - 'partition': values partition output into separate files
+ */
+export type ColumnRole = 'none' | 'frame' | 'metric' | 'label' | 'partition'
 
 /** Configuration for generating profiles */
 export interface ProfileConfig {
