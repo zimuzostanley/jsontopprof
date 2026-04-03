@@ -39,7 +39,7 @@ export const Configure: m.Component = {
         m('.card-title', 'Assign column roles'),
         m('.col-list', S.columns.map(col => {
           // Skip JSON parent columns — only show their expanded sub-fields
-          if (isJsonParent(col)) return null
+          if (isJsonParent(col)) return m('div', { key: `skip:${col.name}`, style: 'display:none' })
 
           const role = S.roles.get(col.name) ?? 'none'
 

@@ -344,6 +344,63 @@ describe('e2e: text view', () => {
   })
 })
 
+// ── JSON array stack (Perfetto heap dominator format) ──
+
+// Read from file to avoid JS string escaping issues with \"
+import { readFileSync } from 'fs'
+import { join } from 'path'
+const HEAP_TSV = readFileSync(join(process.cwd(), 'src/testdata/heap.tsv'), 'utf-8')
+
+describe('e2e: JSON array stack', () => {
+  it('loads heap dominator TSV and shows path sub-fields', async () => {
+    await loadTSV(HEAP_TSV)
+    // Should see path.class and path.heap_type as columns, not "path" itself
+    const colNames = await page.$$eval('.col-row .col-name', els =>
+      els.map(el => el.textContent?.trim())
+    )
+    console.log('Columns visible:', colNames)
+    expect(colNames).toContain('path.class')
+    expect(colNames).toContain('path.heap_type')
+    expect(colNames).not.toContain('path')
+  }, 15000)
+
+  it('assigns path.class as Frame and process_name as Frame', async () => {
+    await clickRole('path.class', 'Frame')
+    await clickRole('process_name', 'Frame')
+    // Wait for frame order to update
+    await page.waitForFunction(() => {
+      const frames = document.querySelectorAll('.frame-item .frame-name')
+      return frames.length >= 2
+    }, { timeout: 3000 })
+  })
+
+  it('generates and shows multi-depth stacks in text view', async () => {
+    await generate()
+    // Switch to text view
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll('.view-toggle button')
+      ;(btns[1] as HTMLElement).click()
+    })
+    await page.waitForSelector('.text-view-pre', { timeout: 5000 })
+
+    const text = await page.$eval('.text-view-pre', el => el.textContent ?? '')
+    console.log('Text view output:\n' + text.slice(0, 500))
+
+    // Should contain multi-depth frames from the JSON array
+    expect(text).toContain('ActivityThread')
+    expect(text).toContain('View')
+    expect(text).toContain('system_server')
+    expect(text).toContain('MainActivity')
+    expect(text).toContain('com.example')
+
+    // In tree mode, should be indented (multi-line per sample)
+    // "system_server" should appear before "ActivityThread" (root before child)
+    const serverIdx = text.indexOf('system_server')
+    const actIdx = text.indexOf('ActivityThread')
+    expect(serverIdx).toBeLessThan(actIdx)
+  }, 20000)
+})
+
 // ── Config persistence ──
 
 describe('e2e: config persistence', () => {

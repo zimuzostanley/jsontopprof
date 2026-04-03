@@ -1,0 +1,3 @@
+process_name	self_size	self_count	path
+"system_server"	8192	10	"[{\"class\":\"ActivityThread\",\"heap_type\":\"HEAP_TYPE_APP\"},{\"class\":\"View\",\"heap_type\":\"HEAP_TYPE_NATIVE\"}]"
+"com.example"	4096	5	"[{\"class\":\"MainActivity\",\"heap_type\":\"HEAP_TYPE_APP\"}]"
