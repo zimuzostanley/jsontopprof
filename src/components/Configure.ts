@@ -38,14 +38,8 @@ export const Configure: m.Component = {
       m('.card', [
         m('.card-title', 'Assign column roles'),
         m('.col-list', S.columns.map(col => {
-          // JSON parent columns — informational only, not assignable
-          if (isJsonParent(col)) {
-            const kind = col.isJsonArray ? 'JSON array' : 'JSON object'
-            return m('.col-row.json-parent', { key: `parent:${col.name}` }, [
-              m('span', `${col.name} `),
-              m('span', { style: 'font-style: italic;' }, `(${kind} \u2014 sub-fields below)`),
-            ])
-          }
+          // Skip JSON parent columns — only show their expanded sub-fields
+          if (isJsonParent(col)) return null
 
           const role = S.roles.get(col.name) ?? 'none'
 
