@@ -44,14 +44,6 @@ export const Configure: m.Component = {
           const role = S.roles.get(col.name) ?? 'none'
 
           return m('.col-row', { key: col.name }, [
-            m('.col-name', [
-              col.jsonKey !== undefined
-                ? [m('span.json-prefix', `${col.source}.`), col.jsonKey]
-                : col.isJsonArray
-                  ? [col.name, ' ', m('span.json-prefix', '[array]')]
-                  : col.name,
-            ]),
-            m('.col-samples', col.sampleValues.join(', ') || '\u2014'),
             m('.col-role', ROLES
               .filter(r => r.key !== 'metric' || col.isNumeric)
               .map(r =>
@@ -61,6 +53,14 @@ export const Configure: m.Component = {
                 }, r.label)
               )
             ),
+            m('.col-name', [
+              col.jsonKey !== undefined
+                ? [m('span.json-prefix', `${col.source}.`), col.jsonKey]
+                : col.isJsonArray
+                  ? [col.name, ' ', m('span.json-prefix', '[array]')]
+                  : col.name,
+            ]),
+            m('.col-samples', col.sampleValues.join(', ') || '\u2014'),
           ])
         })),
       ]),

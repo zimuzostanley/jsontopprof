@@ -250,7 +250,7 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 
 .col-row {
   display: grid;
-  grid-template-columns: 170px 1fr auto;
+  grid-template-columns: auto 160px 1fr;
   gap: 10px;
   align-items: center;
   padding: 5px 10px;
