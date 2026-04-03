@@ -1,4 +1,4 @@
-import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './types'
+import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile, TextSample } from './types'
 
 // Protobuf wire format: type 0 = varint, type 2 = length-delimited.
 // Field numbers per google/pprof/profile.proto.
@@ -353,18 +353,23 @@ export async function generateProfiles(
     // When labels are present, each unique (stack + labels) combination
     // is a separate sample. Without labels, aggregate by stack only.
     const hasLabels = labelColumnInfos.length > 0
+    const textSamples: TextSample[] = []
+
+    function toTextSample(stack: string[], values: number[]): TextSample {
+      const rec: Record<string, number> = {}
+      for (let i = 0; i < allMetricNames.length; i++) rec[allMetricNames[i]] = values[i]
+      return { stack, values: rec }
+    }
 
     if (hasLabels) {
-      // With labels: each row becomes its own sample (labels vary per row)
       for (const row of rows) {
         const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
-        const labels = buildLabels(row, labelColumnInfos)
-        builder.addSample(stack, values, labels)
+        builder.addSample(stack, values, buildLabels(row, labelColumnInfos))
+        textSamples.push(toTextSample(stack, values))
       }
     } else {
-      // Without labels: aggregate by stack
       const stacks = new Map<string, { stack: string[]; values: number[] }>()
       for (const row of rows) {
         const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
@@ -381,8 +386,15 @@ export async function generateProfiles(
       }
       for (const { stack, values } of stacks.values()) {
         builder.addSample(stack, values, [])
+        textSamples.push(toTextSample(stack, values))
       }
     }
+
+    // Sort text samples by first metric descending for readability
+    textSamples.sort((a, b) => {
+      const key = allMetricNames[0]
+      return (b.values[key] ?? 0) - (a.values[key] ?? 0)
+    })
 
     const compressed = await gzipCompress(builder.encode())
     const partValues = parsePartitionKey(partKey)
@@ -410,6 +422,7 @@ export async function generateProfiles(
       ).size,
       rowCount: rows.length,
       partitionValues: partValues,
+      textSamples,
     })
   }
 

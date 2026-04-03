@@ -1,7 +1,7 @@
 import m from 'mithril'
 import { S, downloadProfile } from '../state'
 import { formatBytes } from '../utils/format'
-import { GeneratedProfile } from '../models/types'
+import { TextView } from './TextView'
 
 const selected = new Set<string>()
 let lastProfileSet = ''
@@ -41,7 +41,6 @@ export const Results: m.Component = {
       return m('.card', m('p', { style: 'color: var(--text-secondary);' }, 'No profiles generated yet.'))
     }
 
-    // Auto-select all when profile set changes (new generation)
     syncSelection()
 
     const totalRows = profiles.reduce((s, p) => s + p.rowCount, 0)
@@ -50,17 +49,31 @@ export const Results: m.Component = {
     const allSelected = profiles.every(p => selected.has(p.fileName))
     const noneSelected = selected.size === 0
     const selectedCount = profiles.filter(p => selected.has(p.fileName)).length
+    const isText = S.resultsView === 'text'
 
     return m('div', [
+      // Summary card with view toggle
       m('.card', [
-        m('.card-title', 'Generated profiles'),
+        m('.card-title-row', [
+          m('.card-title', 'Generated profiles'),
+          m('.view-toggle', [
+            m('button', {
+              class: !isText ? 'active' : '',
+              onclick: () => { S.resultsView = 'cards' },
+            }, 'Cards'),
+            m('button', {
+              class: isText ? 'active' : '',
+              onclick: () => { S.resultsView = 'text' },
+            }, 'Text'),
+          ]),
+        ]),
         m('.stats', [
           m('.stat', [m('strong', profiles.length), profiles.length === 1 ? ' profile' : ' profiles']),
           m('.stat', [m('strong', totalRows.toLocaleString()), ' total rows']),
           m('.stat', [m('strong', totalSamples.toLocaleString()), ' unique stacks']),
           m('.stat', [m('strong', formatBytes(totalBytes)), ' total size']),
         ]),
-        profiles.length > 1 ? m('.actions.actions-flush-sm', [
+        !isText && profiles.length > 1 ? m('.actions.actions-flush-sm', [
           m('button.btn.sm', {
             onclick: allSelected ? selectNone : selectAll,
           }, allSelected ? 'Deselect all' : 'Select all'),
@@ -74,7 +87,8 @@ export const Results: m.Component = {
         ]) : null,
       ]),
 
-      m('.profile-list', profiles.map(p =>
+      // Cards view
+      !isText ? m('.profile-list', profiles.map(p =>
         m('.profile-card', { key: p.fileName }, [
           profiles.length > 1
             ? m('input[type=checkbox]', {
@@ -98,8 +112,12 @@ export const Results: m.Component = {
             'aria-label': `Download ${p.fileName}`,
           }, 'Download'),
         ])
-      )),
+      )) : null,
 
+      // Text view
+      isText ? m(TextView) : null,
+
+      // Usage hint
       m('.card.section-gap.hint-card', [
         m('.card-title', 'Usage'),
         m('div', { style: 'font-size: 0.8rem; color: var(--text-secondary); line-height: 1.8;' }, [

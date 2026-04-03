@@ -30,6 +30,7 @@ export interface ResultMessage {
     sampleCount: number
     rowCount: number
     partitionValues: Record<string, string>
+    textSamples: { stack: string[]; values: Record<string, number> }[]
   }[]
 }
 
@@ -61,6 +62,7 @@ async function handleGenerate(req: GenerateRequest): Promise<void> {
       sampleCount: p.sampleCount,
       rowCount: p.rowCount,
       partitionValues: p.partitionValues,
+      textSamples: p.textSamples,
     }
   })
 

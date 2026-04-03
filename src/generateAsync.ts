@@ -57,6 +57,7 @@ export async function generateProfilesAsync(
           sampleCount: p.sampleCount,
           rowCount: p.rowCount,
           partitionValues: p.partitionValues,
+          textSamples: p.textSamples,
         })))
       } else if (msg.type === 'error') {
         reject(new Error(msg.message))

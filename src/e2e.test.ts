@@ -271,6 +271,79 @@ describe('e2e: selective download', () => {
   })
 })
 
+// ── Text view ──
+
+describe('e2e: text view', () => {
+  it('switches to text view', async () => {
+    // Load fresh data and generate
+    await loadTSV(SIMPLE_TSV)
+    await generate()
+    // Click "Text" toggle
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll('.view-toggle button')
+      ;(btns[1] as HTMLElement).click()
+    })
+    await page.waitForSelector('.text-view-pre', { timeout: 3000 })
+  }, 20000)
+
+  it('shows text output with frame names and metrics', async () => {
+    const text = await page.$eval('.text-view-pre', el => el.textContent)
+    expect(text).toBeTruthy()
+    // Should contain frame names from the data
+    expect(text).toContain('malloc')
+    expect(text).toContain('render')
+    // Should contain metric values in brackets
+    expect(text).toContain('[')
+    expect(text).toContain('rows:')
+  })
+
+  it('shows metric toggles', async () => {
+    const toggles = await page.$$eval('.col-role .role-btn', els =>
+      els.map(el => el.textContent?.trim())
+    )
+    expect(toggles).toContain('self_size')
+    expect(toggles).toContain('self_count')
+    expect(toggles).toContain('rows')
+  })
+
+  it('toggling a metric changes text output', async () => {
+    const before = await page.$eval('.text-view-pre', el => el.textContent ?? '')
+
+    // Click the 'self_size' metric toggle to disable it
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll('.col-role .role-btn')
+      for (const btn of btns) {
+        if (btn.textContent?.trim() === 'self_size') (btn as HTMLElement).click()
+      }
+    })
+    await page.waitForFunction((prev: string) => {
+      const pre = document.querySelector('.text-view-pre')
+      return pre && pre.textContent !== prev
+    }, {}, before)
+
+    const after = await page.$eval('.text-view-pre', el => el.textContent ?? '')
+    expect(after).not.toEqual(before)
+  })
+
+  it('copy button exists', async () => {
+    const hasCopy = await page.evaluate(() => {
+      const btns = document.querySelectorAll('.btn.sm')
+      return [...btns].some(b => b.textContent?.trim() === 'Copy')
+    })
+    expect(hasCopy).toBe(true)
+  })
+
+  it('switches back to cards view', async () => {
+    await page.evaluate(() => {
+      const btns = document.querySelectorAll('.view-toggle button')
+      ;(btns[0] as HTMLElement).click()
+    })
+    await page.waitForSelector('.profile-list', { timeout: 3000 })
+    const cards = await page.$$('.profile-card')
+    expect(cards.length).toBeGreaterThan(0)
+  })
+})
+
 // ── Config persistence ──
 
 describe('e2e: config persistence', () => {

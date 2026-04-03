@@ -480,6 +480,64 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
 .unit-input { width: 120px; }
 .checkbox-accent { cursor: pointer; accent-color: var(--accent); }
 
+/* --- Card title row (with inline control) --- */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.card-title-row .card-title { margin-bottom: 0; }
+
+/* --- View toggle --- */
+.view-toggle {
+  display: inline-flex;
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.view-toggle button {
+  padding: 2px 10px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.view-toggle button:hover { background: var(--bg-hover); }
+.view-toggle button.active { background: var(--accent-bg); color: var(--accent); }
+
+/* --- Text view --- */
+.text-view-pre {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 500px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  tab-size: 2;
+}
+.text-profile-header {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin: 12px 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.text-profile-meta { font-weight: 400; font-size: 0.75rem; color: var(--text-secondary); }
+.copy-feedback { font-size: 0.8rem; color: var(--success); font-weight: 500; }
+
 /* --- Hint card --- */
 .hint-card { background: var(--accent-bg); border-color: var(--accent); }
 .hint-card .card-title { color: var(--accent); }

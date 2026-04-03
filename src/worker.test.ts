@@ -65,6 +65,7 @@ describe('worker message protocol', () => {
         sampleCount: 5,
         rowCount: 100,
         partitionValues: { env: 'prod' },
+        textSamples: [{ stack: ['foo', 'bar'], values: { size: 100, rows: 1 } }],
       }],
     }
     expect(msg.profiles[0].data.byteLength).toBe(10)

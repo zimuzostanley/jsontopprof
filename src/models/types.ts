@@ -44,6 +44,12 @@ export interface ProfileConfig {
   metricUnits: Map<string, string>
 }
 
+/** Readable sample for text view. */
+export interface TextSample {
+  stack: string[]
+  values: Record<string, number>
+}
+
 /** A generated pprof profile */
 export interface GeneratedProfile {
   /** Display name */
@@ -58,6 +64,8 @@ export interface GeneratedProfile {
   rowCount: number
   /** Partition key-value pairs (empty if not partitioned) */
   partitionValues: Record<string, string>
+  /** Readable samples for text view */
+  textSamples: TextSample[]
 }
 
 /** Application view state */

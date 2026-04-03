@@ -80,6 +80,8 @@ export interface State {
   profiles: GeneratedProfile[]
   generating: boolean
   generateError: string
+  resultsView: 'cards' | 'text'
+  textMetrics: Set<string>
   progress: GenerateProgress | null
 }
 
@@ -111,6 +113,8 @@ export const S: State = {
   generating: false,
   generateError: '',
   progress: null,
+  resultsView: 'cards',
+  textMetrics: new Set(),
 }
 
 export function applyTheme(theme: 'light' | 'dark'): void {
@@ -238,6 +242,12 @@ export async function generate(): Promise<void> {
       m.redraw()
     })
     S.step = 'results'
+    S.resultsView = 'cards'
+
+    // Init text metrics from first profile's sample keys
+    if (S.profiles.length > 0 && S.profiles[0].textSamples.length > 0) {
+      S.textMetrics = new Set(Object.keys(S.profiles[0].textSamples[0].values))
+    }
 
     // Persist config for this schema
     if (S.data) {
@@ -267,6 +277,8 @@ export function reset(): void {
   S.generating = false
   S.generateError = ''
   S.progress = null
+  S.resultsView = 'cards'
+  S.textMetrics = new Set()
 }
 
 export function downloadProfile(profile: GeneratedProfile): void {
