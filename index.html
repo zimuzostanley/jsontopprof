@@ -2358,9 +2358,20 @@ async function generate() {
     });
     S.step = "results";
     S.resultsView = "pprofs";
-    if (S.profiles.length > 0 && S.profiles[0].textSamples.length > 0) {
-      S.textMetrics = new Set(Object.keys(S.profiles[0].textSamples[0].values));
+    const allMetricKeys = /* @__PURE__ */ new Set();
+    for (const p of S.profiles) {
+      for (const s of p.textSamples) {
+        for (const k of Object.keys(s.values)) allMetricKeys.add(k);
+        if (s.frameValues) {
+          for (const fv of s.frameValues) {
+            for (const k of Object.keys(fv)) allMetricKeys.add(k);
+          }
+        }
+        if (allMetricKeys.size > 0) break;
+      }
+      if (allMetricKeys.size > 0) break;
     }
+    S.textMetrics = allMetricKeys;
     if (S.data) {
       saveConfig(S.data.headers, S);
     }
