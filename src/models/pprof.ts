@@ -1,14 +1,13 @@
 import { ParsedData, ColumnInfo, ProfileConfig, GeneratedProfile } from './types'
 
-// --- Protobuf wire format helpers ---
+// ── Protobuf wire format ──
+// Encodes fields per the protobuf binary wire format spec.
+// Wire type 0 = varint, wire type 2 = length-delimited.
 
 function varint(value: number): Uint8Array {
+  if (value > 0xFFFFFFFF) return varintBig(BigInt(value))
   const out: number[] = []
-  let v = value >>> 0 // ensure unsigned 32-bit
-  // Handle values that need BigInt for encoding
-  if (value > 0xFFFFFFFF) {
-    return varintBig(BigInt(value))
-  }
+  let v = value >>> 0
   do {
     let byte = v & 0x7F
     v >>>= 7
@@ -20,8 +19,7 @@ function varint(value: number): Uint8Array {
 
 function varintBig(value: bigint): Uint8Array {
   const out: number[] = []
-  let v = value
-  if (v < 0n) v = v + (1n << 64n) // two's complement for negative
+  let v = value < 0n ? value + (1n << 64n) : value
   do {
     let byte = Number(v & 0x7Fn)
     v >>= 7n
@@ -44,26 +42,24 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
   return result
 }
 
-function fieldVarint(fieldNumber: number, value: number): Uint8Array {
-  return concat(varint((fieldNumber << 3) | 0), varint(value))
+function fieldVarint(field: number, value: number): Uint8Array {
+  return concat(varint((field << 3) | 0), varint(value))
 }
 
-function fieldBytes(fieldNumber: number, data: Uint8Array): Uint8Array {
-  return concat(varint((fieldNumber << 3) | 2), varint(data.length), data)
+function fieldBytes(field: number, data: Uint8Array): Uint8Array {
+  return concat(varint((field << 3) | 2), varint(data.length), data)
 }
 
-function fieldMessage(fieldNumber: number, msgBytes: Uint8Array): Uint8Array {
-  return fieldBytes(fieldNumber, msgBytes)
+function fieldMessage(field: number, msg: Uint8Array): Uint8Array {
+  return fieldBytes(field, msg)
 }
 
-function encodeString(s: string): Uint8Array {
-  return new TextEncoder().encode(s)
-}
+const encoder = new TextEncoder()
 
-// --- String table ---
+// ── String table ──
 
 class StringTable {
-  private strings: string[] = [''] // index 0 = empty string
+  private strings: string[] = ['']
   private index = new Map<string, number>([['', 0]])
 
   intern(s: string): number {
@@ -76,32 +72,26 @@ class StringTable {
   }
 
   encode(): Uint8Array {
-    const parts: Uint8Array[] = []
-    for (const s of this.strings) {
-      parts.push(fieldBytes(6, encodeString(s))) // Profile.string_table = 6
-    }
-    return concat(...parts)
+    return concat(...this.strings.map(s => fieldBytes(6, encoder.encode(s))))
   }
 }
 
-// --- Pprof builder ---
+// ── Pprof builder ──
 
 class PprofBuilder {
   private strings = new StringTable()
-  private functions = new Map<string, number>() // name -> function_id
-  private locations = new Map<number, number>()  // function_id -> location_id
+  private functions = new Map<string, number>()
+  private locations = new Map<number, number>()
   private nextFuncId = 1
   private nextLocId = 1
   private samples: Uint8Array[] = []
   private functionProtos: Uint8Array[] = []
   private locationProtos: Uint8Array[] = []
-  private metricNames: string[]
-  private metricUnits: string[]
 
-  constructor(metricNames: string[], metricUnits: string[]) {
-    this.metricNames = metricNames
-    this.metricUnits = metricUnits
-  }
+  constructor(
+    private metricNames: string[],
+    private metricUnits: string[],
+  ) {}
 
   private getFunctionId(name: string): number {
     const existing = this.functions.get(name)
@@ -109,12 +99,11 @@ class PprofBuilder {
     const fid = this.nextFuncId++
     this.functions.set(name, fid)
     const nameIdx = this.strings.intern(name)
-    const funcBytes = concat(
-      fieldVarint(1, fid),      // Function.id
-      fieldVarint(2, nameIdx),  // Function.name
-      fieldVarint(3, nameIdx),  // Function.system_name
-    )
-    this.functionProtos.push(fieldMessage(5, funcBytes)) // Profile.function = 5
+    this.functionProtos.push(fieldMessage(5, concat(
+      fieldVarint(1, fid),
+      fieldVarint(2, nameIdx),
+      fieldVarint(3, nameIdx),
+    )))
     return fid
   }
 
@@ -123,53 +112,40 @@ class PprofBuilder {
     if (existing !== undefined) return existing
     const lid = this.nextLocId++
     this.locations.set(funcId, lid)
-    const lineBytes = fieldVarint(1, funcId) // Line.function_id
-    const locBytes = concat(
-      fieldVarint(1, lid),             // Location.id
-      fieldMessage(4, lineBytes),      // Location.line
-    )
-    this.locationProtos.push(fieldMessage(4, locBytes)) // Profile.location = 4
+    this.locationProtos.push(fieldMessage(4, concat(
+      fieldVarint(1, lid),
+      fieldMessage(4, fieldVarint(1, funcId)),
+    )))
     return lid
   }
 
   addSample(stack: string[], values: number[]): void {
-    // pprof wants leaf-first location_ids
     const parts: Uint8Array[] = []
+    // pprof expects leaf-first
     for (let i = stack.length - 1; i >= 0; i--) {
       const fid = this.getFunctionId(stack[i])
-      const lid = this.getLocationId(fid)
-      parts.push(fieldVarint(1, lid)) // Sample.location_id
+      parts.push(fieldVarint(1, this.getLocationId(fid)))
     }
     for (const v of values) {
-      parts.push(fieldVarint(2, v))   // Sample.value
+      parts.push(fieldVarint(2, Math.max(0, v)))
     }
-    this.samples.push(fieldMessage(2, concat(...parts))) // Profile.sample = 2
+    this.samples.push(fieldMessage(2, concat(...parts)))
   }
 
   encode(): Uint8Array {
     const parts: Uint8Array[] = []
 
-    // Sample types (Profile.sample_type = 1)
     for (let i = 0; i < this.metricNames.length; i++) {
       const typeIdx = this.strings.intern(this.metricNames[i])
       const unitIdx = this.strings.intern(this.metricUnits[i])
-      const vtBytes = concat(fieldVarint(1, typeIdx), fieldVarint(2, unitIdx))
-      parts.push(fieldMessage(1, vtBytes))
+      parts.push(fieldMessage(1, concat(fieldVarint(1, typeIdx), fieldVarint(2, unitIdx))))
     }
 
-    // Samples
     for (const s of this.samples) parts.push(s)
-
-    // Locations
     for (const l of this.locationProtos) parts.push(l)
-
-    // Functions
     for (const f of this.functionProtos) parts.push(f)
-
-    // String table
     parts.push(this.strings.encode())
 
-    // Default sample type (Profile.default_sample_type = 15)
     if (this.metricNames.length > 0) {
       parts.push(fieldVarint(15, this.strings.intern(this.metricNames[0])))
     }
@@ -178,11 +154,31 @@ class PprofBuilder {
   }
 }
 
-// --- Profile generation ---
+// ── Column value resolution ──
+// Single place for reading a value from a row given a ColumnInfo,
+// handling regular columns, JSON sub-fields, and JSON arrays.
 
-/**
- * Build a stack of frame names for a single row.
- */
+function resolveStringValue(row: Record<string, string>, col: ColumnInfo): string {
+  if (col.jsonKey !== undefined) {
+    const raw = row[col.source] ?? ''
+    try {
+      const obj = JSON.parse(raw.trim())
+      return String(obj[col.jsonKey] ?? '')
+    } catch {
+      return ''
+    }
+  }
+  return row[col.name] ?? ''
+}
+
+function resolveNumericValue(row: Record<string, string>, col: ColumnInfo): number {
+  const s = resolveStringValue(row, col) || '0'
+  const n = Number(s)
+  return isNaN(n) ? 0 : Math.max(0, Math.round(n))
+}
+
+// ── Stack & partition helpers ──
+
 function buildStack(
   row: Record<string, string>,
   frameOrder: string[],
@@ -196,7 +192,6 @@ function buildStack(
     if (!col) continue
 
     if (col.isJsonArray) {
-      // Expand JSON array into multiple frames
       const raw = row[col.source] ?? ''
       try {
         const arr = JSON.parse(raw.trim())
@@ -204,36 +199,24 @@ function buildStack(
           const labelKey = jsonArrayLabelKey.get(col.name)
           for (const elem of arr) {
             if (typeof elem === 'object' && elem !== null && labelKey) {
-              stack.push(String(elem[labelKey] ?? ''))
+              stack.push(String(elem[labelKey] ?? '(unknown)'))
             } else {
-              stack.push(String(elem))
+              stack.push(String(elem ?? '(null)'))
             }
           }
         }
       } catch {
-        stack.push(raw || '(empty)')
-      }
-    } else if (col.jsonKey !== undefined) {
-      // JSON sub-field
-      const raw = row[col.source] ?? ''
-      try {
-        const obj = JSON.parse(raw.trim())
-        stack.push(String(obj[col.jsonKey] ?? ''))
-      } catch {
-        stack.push(raw || '(empty)')
+        stack.push(raw || '(parse error)')
       }
     } else {
-      // Regular column
-      stack.push(row[col.name] || '(empty)')
+      const val = resolveStringValue(row, col)
+      stack.push(val || '(empty)')
     }
   }
 
   return stack.length > 0 ? stack : ['(no frames)']
 }
 
-/**
- * Extract numeric metric value from a row.
- */
 function getMetricValue(
   row: Record<string, string>,
   metricName: string,
@@ -241,77 +224,59 @@ function getMetricValue(
 ): number {
   const col = columns.find(c => c.name === metricName)
   if (!col) return 0
-
-  let raw: string
-  if (col.jsonKey !== undefined) {
-    const src = row[col.source] ?? ''
-    try {
-      const obj = JSON.parse(src.trim())
-      raw = String(obj[col.jsonKey] ?? '0')
-    } catch {
-      raw = '0'
-    }
-  } else {
-    raw = row[col.name] ?? '0'
-  }
-
-  const n = Number(raw)
-  return isNaN(n) ? 0 : Math.round(n)
+  return resolveNumericValue(row, col)
 }
 
-/**
- * Get partition key for a row.
- */
 function getPartitionKey(
   row: Record<string, string>,
   partitionColumns: string[],
   columns: ColumnInfo[],
 ): string {
   if (partitionColumns.length === 0) return ''
-  const parts: string[] = []
-  for (const name of partitionColumns) {
+  return partitionColumns.map(name => {
     const col = columns.find(c => c.name === name)
-    if (!col) continue
-    let val: string
-    if (col.jsonKey !== undefined) {
-      const src = row[col.source] ?? ''
-      try {
-        const obj = JSON.parse(src.trim())
-        val = String(obj[col.jsonKey] ?? '')
-      } catch {
-        val = ''
-      }
-    } else {
-      val = row[col.name] ?? ''
-    }
-    parts.push(`${name}=${val}`)
-  }
-  return parts.join('|')
+    const val = col ? resolveStringValue(row, col) : ''
+    return `${name}=${val}`
+  }).join('|')
 }
 
-/**
- * Compress data using the browser's CompressionStream API.
- */
+function parsePartitionKey(partKey: string): Record<string, string> {
+  if (partKey === '') return {}
+  const result: Record<string, string> = {}
+  for (const part of partKey.split('|')) {
+    const eq = part.indexOf('=')
+    if (eq >= 0) {
+      result[part.slice(0, eq)] = part.slice(eq + 1)
+    }
+  }
+  return result
+}
+
+// ── Gzip ──
+
 async function gzipCompress(data: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([data as BlobPart]).stream().pipeThrough(new CompressionStream('gzip'))
   const reader = stream.getReader()
   const chunks: Uint8Array[] = []
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    chunks.push(value)
+    if (value) chunks.push(value)
   }
   return concat(...chunks)
 }
 
-/**
- * Generate pprof profiles from parsed data and configuration.
- */
+// ── Profile generation ──
+
 export async function generateProfiles(
   data: ParsedData,
   columns: ColumnInfo[],
   config: ProfileConfig,
 ): Promise<GeneratedProfile[]> {
+  if (config.frameOrder.length === 0) {
+    throw new Error('At least one frame column must be selected')
+  }
+
   const metricColumns = [...config.roles.entries()]
     .filter(([, role]) => role === 'metric')
     .map(([name]) => name)
@@ -320,41 +285,36 @@ export async function generateProfiles(
     .filter(([, role]) => role === 'partition')
     .map(([name]) => name)
 
-  // Always include "rows" as the last metric
   const allMetricNames = [...metricColumns, 'rows']
   const allMetricUnits = [
     ...metricColumns.map(n => config.metricUnits.get(n) ?? 'count'),
     'count',
   ]
 
-  // Group rows by partition key
+  // Group rows by partition
   const partitions = new Map<string, Record<string, string>[]>()
   for (const row of data.rows) {
     const key = getPartitionKey(row, partitionColumns, columns)
-    if (!partitions.has(key)) partitions.set(key, [])
-    partitions.get(key)!.push(row)
+    let bucket = partitions.get(key)
+    if (!bucket) { bucket = []; partitions.set(key, bucket) }
+    bucket.push(row)
   }
 
   const profiles: GeneratedProfile[] = []
 
   for (const [partKey, rows] of partitions) {
     const builder = new PprofBuilder(allMetricNames, allMetricUnits)
-
-    // Aggregate by stack
     const stacks = new Map<string, { stack: string[]; values: number[] }>()
 
     for (const row of rows) {
       const stack = buildStack(row, config.frameOrder, columns, config.jsonArrayLabelKey)
       const stackKey = stack.join('\x00')
-
-      const values = metricColumns.map(m => getMetricValue(row, m, columns))
-      values.push(1) // rows metric
+      const values = metricColumns.map(name => getMetricValue(row, name, columns))
+      values.push(1) // rows
 
       const existing = stacks.get(stackKey)
       if (existing) {
-        for (let i = 0; i < values.length; i++) {
-          existing.values[i] += values[i]
-        }
+        for (let i = 0; i < values.length; i++) existing.values[i] += values[i]
       } else {
         stacks.set(stackKey, { stack, values })
       }
@@ -364,27 +324,20 @@ export async function generateProfiles(
       builder.addSample(stack, values)
     }
 
-    const rawData = builder.encode()
-    const compressed = await gzipCompress(rawData)
+    const compressed = await gzipCompress(builder.encode())
+    const partValues = parsePartitionKey(partKey)
+    const displayParts = Object.values(partValues)
 
-    // Build nice name and filename
     let name: string
     let fileName: string
     if (partKey === '') {
       name = 'profile'
       fileName = 'profile.pb.gz'
     } else {
-      const partValues: Record<string, string> = {}
-      const parts = partKey.split('|').map(p => {
-        const [k, ...rest] = p.split('=')
-        const v = rest.join('=')
-        partValues[k] = v
-        return v
-      })
-      name = parts.join(' / ')
-      const safeName = parts.map(p =>
-        p.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40)
-      ).join('_')
+      name = displayParts.join(' / ')
+      const safeName = displayParts
+        .map(p => p.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40))
+        .join('_')
       fileName = `profile_${safeName}.pb.gz`
     }
 
@@ -394,19 +347,18 @@ export async function generateProfiles(
       data: compressed,
       sampleCount: stacks.size,
       rowCount: rows.length,
-      partitionValues: partKey === '' ? {} : Object.fromEntries(
-        partKey.split('|').map(p => {
-          const [k, ...rest] = p.split('=')
-          return [k, rest.join('=')]
-        })
-      ),
+      partitionValues: partValues,
     })
   }
 
-  // Sort by name
   profiles.sort((a, b) => a.name.localeCompare(b.name))
   return profiles
 }
 
-// Export for testing
-export { varint, varintBig, fieldVarint, fieldBytes, fieldMessage, concat, PprofBuilder, StringTable, buildStack, getMetricValue }
+// Exported for testing
+export {
+  varint, varintBig, fieldVarint, fieldBytes, fieldMessage, concat,
+  PprofBuilder, StringTable,
+  buildStack, getMetricValue, resolveStringValue, resolveNumericValue,
+  parsePartitionKey,
+}

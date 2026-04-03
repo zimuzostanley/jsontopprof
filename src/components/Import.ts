@@ -1,12 +1,23 @@
 import m from 'mithril'
 import { S, loadData, reset } from '../state'
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+const PREVIEW_ROWS = 5
+const PREVIEW_CELL_MAX = 50
+
 let dragging = false
 
 function handleFile(file: File): void {
+  if (file.size > MAX_FILE_SIZE) {
+    S.parseError = `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB, max ${MAX_FILE_SIZE / 1024 / 1024} MB)`
+    m.redraw()
+    return
+  }
   const reader = new FileReader()
-  reader.onload = () => {
-    loadData(reader.result as string, file.name)
+  reader.onload = () => loadData(reader.result as string, file.name)
+  reader.onerror = () => {
+    S.parseError = 'Failed to read file'
+    m.redraw()
   }
   reader.readAsText(file)
 }
@@ -14,21 +25,18 @@ function handleFile(file: File): void {
 function handleDrop(e: DragEvent): void {
   e.preventDefault()
   dragging = false
+  m.redraw()
   const file = e.dataTransfer?.files[0]
   if (file) handleFile(file)
 }
 
-function handlePaste(e: ClipboardEvent): void {
-  const text = e.clipboardData?.getData('text')
-  if (text) {
-    // Let the textarea handle it naturally, we'll pick it up on input
-  }
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 3) + '...' : s
 }
 
 export const Import: m.Component = {
   view() {
     return m('div', [
-      // If we have data loaded, show summary + option to re-import
       S.data ? m('.card', [
         m('.stats', [
           m('.stat', [m('strong', S.data.headers.length), ' columns']),
@@ -40,30 +48,30 @@ export const Import: m.Component = {
         ]),
       ]) : null,
 
-      // Import area
       !S.data ? [
         m('.card', [
           m('.card-title', 'Paste or upload TSV data'),
 
-          // Textarea
           m('textarea', {
-            placeholder: 'Paste tab-separated data here...\n\ncolumn1\\tcolumn2\\tjson_column\nvalue1\\t42\\t{"key": "val"}\n\nJSON columns are auto-detected and expanded.',
+            placeholder: 'Paste tab-separated data here...\n\nSupports quoted fields, JSON columns, and large datasets.',
             value: S.rawText,
             oninput: (e: InputEvent) => {
               S.rawText = (e.target as HTMLTextAreaElement).value
             },
-            onpaste: handlePaste,
           }),
 
-          // File upload
           m('.drop-zone' + (dragging ? '.dragging' : ''), {
             style: 'margin-top: 12px;',
-            ondragover: (e: DragEvent) => { e.preventDefault(); dragging = true },
-            ondragleave: () => { dragging = false },
+            ondragover: (e: DragEvent) => {
+              e.preventDefault()
+              if (!dragging) { dragging = true; m.redraw() }
+            },
+            ondragleave: () => {
+              if (dragging) { dragging = false; m.redraw() }
+            },
             ondrop: handleDrop,
             onclick: () => {
-              const input = document.getElementById('file-input') as HTMLInputElement
-              input?.click()
+              (document.getElementById('file-input') as HTMLInputElement)?.click()
             },
           }, [
             m('div', 'Drop a .tsv file here or click to browse'),
@@ -77,7 +85,6 @@ export const Import: m.Component = {
             }),
           ]),
 
-          // Load button
           S.rawText.trim() ? m('.actions', [
             m('.spacer'),
             m('button.btn.primary', {
@@ -86,25 +93,23 @@ export const Import: m.Component = {
           ]) : null,
         ]),
 
-        // Error
         S.parseError ? m('.msg-error', S.parseError) : null,
       ] : null,
 
-      // Data preview
       S.data && S.step === 'import' ? m('.card.section-gap', [
         m('.card-title', 'Data preview'),
         m('.preview-table', [
           m('table', [
             m('thead', m('tr', S.data.headers.map(h => m('th', h)))),
-            m('tbody', S.data.rows.slice(0, 5).map(row =>
+            m('tbody', S.data.rows.slice(0, PREVIEW_ROWS).map(row =>
               m('tr', S.data!.headers.map(h => {
                 const val = row[h] ?? ''
-                return m('td', { title: val }, val.length > 50 ? val.slice(0, 47) + '...' : val)
+                return m('td', { title: val }, truncate(val, PREVIEW_CELL_MAX))
               }))
             )),
-            S.data.rows.length > 5 ? m('tfoot', m('tr',
+            S.data.rows.length > PREVIEW_ROWS ? m('tfoot', m('tr',
               m('td.truncated', { colspan: S.data.headers.length },
-                `... and ${(S.data.rows.length - 5).toLocaleString()} more rows`)
+                `\u2026 and ${(S.data.rows.length - PREVIEW_ROWS).toLocaleString()} more rows`)
             )) : null,
           ]),
         ]),

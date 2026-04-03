@@ -10,19 +10,20 @@ export const App: m.Component = {
   },
 
   view() {
+    const themeLabel = S.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'
+
     return m('.shell', [
-      // Header
       m('.header', [
         m('h1', 'JSON to pprof'),
         m('.header-actions', [
           m('button.btn-icon', {
             onclick: toggleTheme,
-            title: S.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode',
+            title: themeLabel,
+            'aria-label': themeLabel,
           }, S.theme === 'light' ? '\u263E' : '\u2600'),
         ]),
       ]),
 
-      // Steps nav
       S.data ? m('.steps', [
         m('button.step-btn', {
           class: S.step === 'import' ? 'active' : '',
@@ -40,7 +41,6 @@ export const App: m.Component = {
         }, '3. Profiles'),
       ]) : null,
 
-      // Content
       S.step === 'import' ? m(Import) : null,
       S.step === 'configure' ? m(Configure) : null,
       S.step === 'results' ? m(Results) : null,

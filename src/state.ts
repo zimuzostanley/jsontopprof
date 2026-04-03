@@ -1,31 +1,22 @@
 import m from 'mithril'
-import { ParsedData, ColumnInfo, ColumnRole, ProfileConfig, GeneratedProfile, AppStep } from './models/types'
+import { ColumnRole, ProfileConfig, GeneratedProfile, AppStep } from './models/types'
 import { parseTSV, analyzeColumns, suggestDefaults } from './models/tsv'
 import { generateProfiles } from './models/pprof'
 
+import type { ColumnInfo, ParsedData } from './models/types'
+
 export interface State {
-  // Theme
   theme: 'light' | 'dark'
-
-  // Current step
   step: AppStep
-
-  // Import
   rawText: string
   fileName: string
   parseError: string
-
-  // Parsed data
   data: ParsedData | null
   columns: ColumnInfo[]
-
-  // Configuration
   roles: Map<string, ColumnRole>
   frameOrder: string[]
   jsonArrayLabelKey: Map<string, string>
   metricUnits: Map<string, string>
-
-  // Results
   profiles: GeneratedProfile[]
   generating: boolean
   generateError: string
@@ -35,8 +26,12 @@ function loadTheme(): 'light' | 'dark' {
   try {
     const saved = localStorage.getItem('pprof-theme')
     if (saved === 'dark' || saved === 'light') return saved
-  } catch { /* ignore */ }
+  } catch { /* localStorage may be unavailable */ }
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }
 
 export const S: State = {
@@ -66,6 +61,14 @@ export function toggleTheme(): void {
   applyTheme(S.theme === 'light' ? 'dark' : 'light')
 }
 
+/** Infer a reasonable unit from a column name. */
+function inferUnit(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('size') || lower.includes('byte')) return 'bytes'
+  if (lower.includes('time') || lower.includes('dur')) return 'nanoseconds'
+  return 'count'
+}
+
 export function loadData(text: string, fileName: string): void {
   S.rawText = text
   S.fileName = fileName
@@ -86,37 +89,24 @@ export function loadData(text: string, fileName: string): void {
     S.data = data
     S.columns = analyzeColumns(data)
 
-    // Apply smart defaults
     const defaults = suggestDefaults(S.columns)
     S.roles = defaults.roles
     S.frameOrder = defaults.frameOrder
     S.jsonArrayLabelKey = new Map()
     S.metricUnits = new Map()
 
-    // Default units for detected metrics
     for (const col of S.columns) {
       if (defaults.roles.get(col.name) === 'metric') {
-        const nameLower = col.name.toLowerCase()
-        if (nameLower.includes('size') || nameLower.includes('byte')) {
-          S.metricUnits.set(col.name, 'bytes')
-        } else if (nameLower.includes('time') || nameLower.includes('dur')) {
-          S.metricUnits.set(col.name, 'nanoseconds')
-        } else {
-          S.metricUnits.set(col.name, 'count')
-        }
+        S.metricUnits.set(col.name, inferUnit(col.name))
       }
-    }
-
-    // Default label key for JSON arrays
-    for (const col of S.columns) {
       if (col.isJsonArray && col.jsonArrayKeys && col.jsonArrayKeys.length > 0) {
         S.jsonArrayLabelKey.set(col.name, col.jsonArrayKeys[0])
       }
     }
 
     S.step = 'configure'
-  } catch (e: any) {
-    S.parseError = e.message || 'Failed to parse input'
+  } catch (e: unknown) {
+    S.parseError = errorMessage(e) || 'Failed to parse input'
   }
 
   m.redraw()
@@ -132,7 +122,6 @@ export function setRole(columnName: string, role: ColumnRole): void {
     S.frameOrder = S.frameOrder.filter(n => n !== columnName)
   }
 
-  // Set default metric unit
   if (role === 'metric' && !S.metricUnits.has(columnName)) {
     S.metricUnits.set(columnName, 'count')
   }
@@ -141,14 +130,15 @@ export function setRole(columnName: string, role: ColumnRole): void {
 export function moveFrame(name: string, direction: -1 | 1): void {
   const idx = S.frameOrder.indexOf(name)
   if (idx < 0) return
-  const newIdx = idx + direction
-  if (newIdx < 0 || newIdx >= S.frameOrder.length) return
-  S.frameOrder[idx] = S.frameOrder[newIdx]
-  S.frameOrder[newIdx] = name
+  const target = idx + direction
+  if (target < 0 || target >= S.frameOrder.length) return
+  const other = S.frameOrder[target]
+  S.frameOrder[target] = name
+  S.frameOrder[idx] = other
 }
 
 export async function generate(): Promise<void> {
-  if (!S.data) return
+  if (!S.data || S.generating) return
   S.generating = true
   S.generateError = ''
   S.profiles = []
@@ -163,8 +153,8 @@ export async function generate(): Promise<void> {
     }
     S.profiles = await generateProfiles(S.data, S.columns, config)
     S.step = 'results'
-  } catch (e: any) {
-    S.generateError = e.message || 'Failed to generate profiles'
+  } catch (e: unknown) {
+    S.generateError = errorMessage(e) || 'Failed to generate profiles'
   } finally {
     S.generating = false
     m.redraw()
@@ -198,7 +188,5 @@ export function downloadProfile(profile: GeneratedProfile): void {
 }
 
 export function downloadAll(): void {
-  for (const p of S.profiles) {
-    downloadProfile(p)
-  }
+  for (const p of S.profiles) downloadProfile(p)
 }

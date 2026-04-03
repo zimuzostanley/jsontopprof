@@ -99,9 +99,11 @@ export function parseDelimited(text: string, delimiter: string): string[][] {
 /**
  * Analyze parsed data to discover column types, JSON sub-fields, etc.
  */
+const ANALYSIS_SAMPLE_SIZE = 20
+
 export function analyzeColumns(data: ParsedData): ColumnInfo[] {
   const columns: ColumnInfo[] = []
-  const sampleSize = Math.min(data.rows.length, 20)
+  const sampleSize = Math.min(data.rows.length, ANALYSIS_SAMPLE_SIZE)
 
   for (const header of data.headers) {
     const samples = data.rows.slice(0, sampleSize).map(r => r[header] ?? '')
@@ -219,35 +221,24 @@ export function suggestDefaults(columns: ColumnInfo[]): {
   const roles = new Map<string, ColumnRole>()
   const frameOrder: string[] = []
 
-  // First non-numeric, non-JSON-parent column becomes main frame
+  // Skip JSON sub-fields for initial frame selection
+  const topLevel = columns.filter(c => c.jsonKey === undefined)
+
+  // Pick first non-numeric top-level column as the default frame
   let foundFrame = false
-  for (const col of columns) {
-    if (col.jsonKey !== undefined) continue // skip JSON sub-fields initially
-    if (col.isJsonArray) {
-      // JSON arrays are good frame candidates
-      if (!foundFrame) {
-        roles.set(col.name, 'frame')
-        frameOrder.push(col.name)
-        foundFrame = true
-        continue
-      }
-    }
-    if (!col.isNumeric && !col.isJsonArray && col.jsonKey === undefined) {
-      if (!foundFrame) {
-        roles.set(col.name, 'frame')
-        frameOrder.push(col.name)
-        foundFrame = true
-        continue
-      }
-    }
-    if (col.isNumeric) {
+  for (const col of topLevel) {
+    if (!foundFrame && !col.isNumeric) {
+      roles.set(col.name, 'frame')
+      frameOrder.push(col.name)
+      foundFrame = true
+    } else if (col.isNumeric) {
       roles.set(col.name, 'metric')
     } else {
       roles.set(col.name, 'none')
     }
   }
 
-  // Set remaining unset columns to none
+  // Default all unset (JSON sub-fields, etc.) to none
   for (const col of columns) {
     if (!roles.has(col.name)) {
       roles.set(col.name, 'none')

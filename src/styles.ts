@@ -427,15 +427,6 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
   margin-top: 10px;
 }
 
-.msg-success {
-  padding: 8px 12px;
-  border: 1px solid var(--success);
-  border-radius: var(--radius-sm);
-  background: var(--success-bg);
-  color: var(--success);
-  font-size: 0.85rem;
-  margin-top: 10px;
-}
 
 /* --- Stats --- */
 .stats { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -466,6 +457,17 @@ input[type="text"]:focus { outline: none; border-color: var(--border-focus); }
   animation: spin 0.5s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- Hint card --- */
+.hint-card { background: var(--accent-bg); border-color: var(--accent); }
+.hint-card .card-title { color: var(--accent); }
+.code-inline {
+  font-family: var(--mono);
+  background: var(--bg-accent);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
 
 /* --- Responsive --- */
 @media (max-width: 600px) {

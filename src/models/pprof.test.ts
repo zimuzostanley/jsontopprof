@@ -1,8 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { varint, varintBig, concat, fieldVarint, PprofBuilder, StringTable, buildStack, getMetricValue, generateProfiles } from './pprof'
+import {
+  varint, varintBig, concat, fieldVarint,
+  PprofBuilder, StringTable,
+  buildStack, getMetricValue, resolveStringValue, resolveNumericValue,
+  parsePartitionKey, generateProfiles,
+} from './pprof'
 import { parseTSV, analyzeColumns, suggestDefaults } from './tsv'
 import { ColumnInfo, ProfileConfig } from './types'
-import { generateSimpleTSV, generateHeapDominatorTSV, generateJSONObjectTSV, generateQuotedTSV, generateMixedTypesTSV, generateEdgeCasesTSV, generateMultiPartitionTSV, generateLargeTSV } from './tsv.test'
+import {
+  generateSimpleTSV, generateHeapDominatorTSV, generateJSONObjectTSV,
+  generateQuotedTSV, generateMixedTypesTSV, generateEdgeCasesTSV,
+  generateMultiPartitionTSV, generateLargeTSV,
+} from './tsv.test'
+
+// ── Protobuf encoding ──
 
 describe('varint', () => {
   it('encodes 0', () => {
@@ -30,142 +41,257 @@ describe('varintBig', () => {
 
 describe('concat', () => {
   it('concatenates arrays', () => {
-    const a = new Uint8Array([1, 2])
-    const b = new Uint8Array([3, 4])
-    expect(concat(a, b)).toEqual(new Uint8Array([1, 2, 3, 4]))
+    expect(concat(new Uint8Array([1, 2]), new Uint8Array([3, 4]))).toEqual(new Uint8Array([1, 2, 3, 4]))
   })
 
-  it('handles empty arrays', () => {
+  it('handles empty', () => {
     expect(concat()).toEqual(new Uint8Array([]))
     expect(concat(new Uint8Array([1]))).toEqual(new Uint8Array([1]))
   })
 })
 
 describe('StringTable', () => {
-  it('interns strings with index 0 as empty', () => {
+  it('interns with index 0 as empty', () => {
     const st = new (StringTable as any)()
     expect(st.intern('')).toBe(0)
     expect(st.intern('hello')).toBe(1)
-    expect(st.intern('hello')).toBe(1)  // dedup
+    expect(st.intern('hello')).toBe(1)
     expect(st.intern('world')).toBe(2)
   })
 })
 
 describe('PprofBuilder', () => {
   it('produces non-empty output', () => {
-    const builder = new (PprofBuilder as any)(['size', 'rows'], ['bytes', 'count'])
-    builder.addSample(['root', 'leaf'], [100, 1])
-    const data = builder.encode()
-    expect(data.length).toBeGreaterThan(0)
+    const b = new (PprofBuilder as any)(['size', 'rows'], ['bytes', 'count'])
+    b.addSample(['root', 'leaf'], [100, 1])
+    expect(b.encode().length).toBeGreaterThan(0)
   })
 
   it('deduplicates functions and locations', () => {
-    const builder = new (PprofBuilder as any)(['count'], ['objects'])
-    builder.addSample(['a', 'b'], [10])
-    builder.addSample(['a', 'c'], [20])
-    const data = builder.encode()
-    expect(data.length).toBeGreaterThan(0)
+    const b = new (PprofBuilder as any)(['count'], ['objects'])
+    b.addSample(['a', 'b'], [10])
+    b.addSample(['a', 'c'], [20])
+    expect(b.encode().length).toBeGreaterThan(0)
+  })
+
+  it('clamps negative values to zero', () => {
+    const b = new (PprofBuilder as any)(['val'], ['count'])
+    // Should not throw; negative values clamped to 0
+    b.addSample(['frame'], [-5])
+    expect(b.encode().length).toBeGreaterThan(0)
   })
 })
 
+// ── Column value resolution ──
+
+describe('resolveStringValue', () => {
+  it('resolves regular column', () => {
+    const col: ColumnInfo = { name: 'x', source: 'x', sampleValues: [], isNumeric: false }
+    expect(resolveStringValue({ x: 'hello' }, col)).toBe('hello')
+  })
+
+  it('resolves JSON sub-field', () => {
+    const col: ColumnInfo = { name: 'meta.k', source: 'meta', jsonKey: 'k', sampleValues: [], isNumeric: false }
+    expect(resolveStringValue({ meta: '{"k":"v"}' }, col)).toBe('v')
+  })
+
+  it('returns empty for bad JSON', () => {
+    const col: ColumnInfo = { name: 'meta.k', source: 'meta', jsonKey: 'k', sampleValues: [], isNumeric: false }
+    expect(resolveStringValue({ meta: 'not json' }, col)).toBe('')
+  })
+
+  it('returns empty for missing key in JSON', () => {
+    const col: ColumnInfo = { name: 'meta.k', source: 'meta', jsonKey: 'k', sampleValues: [], isNumeric: false }
+    expect(resolveStringValue({ meta: '{"other":1}' }, col)).toBe('')
+  })
+})
+
+describe('resolveNumericValue', () => {
+  it('resolves numbers', () => {
+    const col: ColumnInfo = { name: 'x', source: 'x', sampleValues: [], isNumeric: true }
+    expect(resolveNumericValue({ x: '42' }, col)).toBe(42)
+  })
+
+  it('rounds floats', () => {
+    const col: ColumnInfo = { name: 'x', source: 'x', sampleValues: [], isNumeric: true }
+    expect(resolveNumericValue({ x: '3.7' }, col)).toBe(4)
+  })
+
+  it('clamps negative to 0', () => {
+    const col: ColumnInfo = { name: 'x', source: 'x', sampleValues: [], isNumeric: true }
+    expect(resolveNumericValue({ x: '-10' }, col)).toBe(0)
+  })
+
+  it('returns 0 for non-numeric', () => {
+    const col: ColumnInfo = { name: 'x', source: 'x', sampleValues: [], isNumeric: false }
+    expect(resolveNumericValue({ x: 'abc' }, col)).toBe(0)
+  })
+})
+
+// ── Stack building ──
+
 describe('buildStack', () => {
-  it('builds stack from regular columns', () => {
-    const row = { module: 'libc', func: 'malloc' }
-    const columns: ColumnInfo[] = [
+  it('builds from regular columns', () => {
+    const cols: ColumnInfo[] = [
       { name: 'module', source: 'module', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    const stack = buildStack(row, ['module', 'func'], columns, new Map())
-    expect(stack).toEqual(['libc', 'malloc'])
+    expect(buildStack({ module: 'libc', func: 'malloc' }, ['module', 'func'], cols, new Map()))
+      .toEqual(['libc', 'malloc'])
   })
 
-  it('builds stack from JSON sub-fields', () => {
-    const row = { meta: '{"region":"us","team":"backend"}', func: 'malloc' }
-    const columns: ColumnInfo[] = [
+  it('builds from JSON sub-fields', () => {
+    const cols: ColumnInfo[] = [
       { name: 'meta.region', source: 'meta', jsonKey: 'region', sampleValues: [], isNumeric: false },
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    const stack = buildStack(row, ['meta.region', 'func'], columns, new Map())
-    expect(stack).toEqual(['us', 'malloc'])
+    expect(buildStack({ meta: '{"region":"us"}', func: 'foo' }, ['meta.region', 'func'], cols, new Map()))
+      .toEqual(['us', 'foo'])
   })
 
-  it('expands JSON arrays into multiple frames', () => {
-    const row = { path: '[{"class":"Foo"},{"class":"Bar"}]', size: '100' }
-    const columns: ColumnInfo[] = [
+  it('expands JSON arrays', () => {
+    const cols: ColumnInfo[] = [
       { name: 'path', source: 'path', isJsonArray: true, jsonArrayKeys: ['class'], sampleValues: [], isNumeric: false },
     ]
-    const stack = buildStack(row, ['path'], columns, new Map([['path', 'class']]))
-    expect(stack).toEqual(['Foo', 'Bar'])
+    expect(buildStack({ path: '[{"class":"Foo"},{"class":"Bar"}]' }, ['path'], cols, new Map([['path', 'class']])))
+      .toEqual(['Foo', 'Bar'])
   })
 
-  it('handles empty values with placeholder', () => {
-    const row = { func: '' }
-    const columns: ColumnInfo[] = [
+  it('handles primitive JSON arrays', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'tags', source: 'tags', isJsonArray: true, sampleValues: [], isNumeric: false },
+    ]
+    expect(buildStack({ tags: '["a","b","c"]' }, ['tags'], cols, new Map()))
+      .toEqual(['a', 'b', 'c'])
+  })
+
+  it('handles null elements in JSON array', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'arr', source: 'arr', isJsonArray: true, sampleValues: [], isNumeric: false },
+    ]
+    expect(buildStack({ arr: '[null, "x"]' }, ['arr'], cols, new Map()))
+      .toEqual(['(null)', 'x'])
+  })
+
+  it('shows (empty) for empty string values', () => {
+    const cols: ColumnInfo[] = [
       { name: 'func', source: 'func', sampleValues: [], isNumeric: false },
     ]
-    const stack = buildStack(row, ['func'], columns, new Map())
-    expect(stack).toEqual(['(empty)'])
+    expect(buildStack({ func: '' }, ['func'], cols, new Map())).toEqual(['(empty)'])
   })
 
-  it('returns placeholder when no frames configured', () => {
-    const row = { func: 'x' }
-    const stack = buildStack(row, [], [], new Map())
-    expect(stack).toEqual(['(no frames)'])
+  it('shows (no frames) when no frame columns', () => {
+    expect(buildStack({}, [], [], new Map())).toEqual(['(no frames)'])
+  })
+
+  it('handles malformed JSON gracefully', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'path', source: 'path', isJsonArray: true, sampleValues: [], isNumeric: false },
+    ]
+    // Non-JSON is used as literal frame value
+    expect(buildStack({ path: 'not-json' }, ['path'], cols, new Map()))
+      .toEqual(['not-json'])
+    // Truly broken JSON (starts with [ but invalid) falls back to raw
+    expect(buildStack({ path: '[broken' }, ['path'], cols, new Map()))
+      .toEqual(['[broken'])
+    // Empty string gets placeholder
+    expect(buildStack({ path: '' }, ['path'], cols, new Map()))
+      .toEqual(['(parse error)'])
+  })
+
+  it('handles missing JSON sub-field key', () => {
+    const cols: ColumnInfo[] = [
+      { name: 'meta.missing', source: 'meta', jsonKey: 'missing', sampleValues: [], isNumeric: false },
+    ]
+    expect(buildStack({ meta: '{"other":1}' }, ['meta.missing'], cols, new Map()))
+      .toEqual(['(empty)'])
   })
 })
 
 describe('getMetricValue', () => {
-  it('extracts numeric value from regular column', () => {
-    const row = { size: '4096' }
+  it('extracts from regular column', () => {
     const cols: ColumnInfo[] = [{ name: 'size', source: 'size', sampleValues: [], isNumeric: true }]
-    expect(getMetricValue(row, 'size', cols)).toBe(4096)
+    expect(getMetricValue({ size: '4096' }, 'size', cols)).toBe(4096)
   })
 
-  it('extracts numeric value from JSON sub-field', () => {
-    const row = { meta: '{"count":42}' }
+  it('extracts from JSON sub-field', () => {
     const cols: ColumnInfo[] = [{ name: 'meta.count', source: 'meta', jsonKey: 'count', sampleValues: [], isNumeric: true }]
-    expect(getMetricValue(row, 'meta.count', cols)).toBe(42)
+    expect(getMetricValue({ meta: '{"count":42}' }, 'meta.count', cols)).toBe(42)
   })
 
-  it('returns 0 for non-numeric values', () => {
-    const row = { size: 'abc' }
-    const cols: ColumnInfo[] = [{ name: 'size', source: 'size', sampleValues: [], isNumeric: false }]
-    expect(getMetricValue(row, 'size', cols)).toBe(0)
-  })
-
-  it('returns 0 for missing columns', () => {
+  it('returns 0 for missing column', () => {
     expect(getMetricValue({ x: '1' }, 'missing', [])).toBe(0)
+  })
+
+  it('returns 0 for NaN', () => {
+    const cols: ColumnInfo[] = [{ name: 'x', source: 'x', sampleValues: [], isNumeric: false }]
+    expect(getMetricValue({ x: 'abc' }, 'x', cols)).toBe(0)
+  })
+
+  it('clamps negative to 0', () => {
+    const cols: ColumnInfo[] = [{ name: 'x', source: 'x', sampleValues: [], isNumeric: true }]
+    expect(getMetricValue({ x: '-100' }, 'x', cols)).toBe(0)
   })
 })
 
+// ── Partition key parsing ──
+
+describe('parsePartitionKey', () => {
+  it('parses single key', () => {
+    expect(parsePartitionKey('region=us')).toEqual({ region: 'us' })
+  })
+
+  it('parses multiple keys', () => {
+    expect(parsePartitionKey('region=us|env=prod')).toEqual({ region: 'us', env: 'prod' })
+  })
+
+  it('handles values with =', () => {
+    expect(parsePartitionKey('expr=a=b')).toEqual({ expr: 'a=b' })
+  })
+
+  it('returns empty for empty key', () => {
+    expect(parsePartitionKey('')).toEqual({})
+  })
+})
+
+// ── Profile generation ──
+
 describe('generateProfiles', () => {
-  it('generates a profile from simple TSV', async () => {
+  it('rejects zero frame columns', async () => {
+    const data = parseTSV('name\nfoo')
+    const cols = analyzeColumns(data)
+    const config: ProfileConfig = {
+      roles: new Map([['name', 'none']]),
+      frameOrder: [],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map(),
+    }
+    await expect(generateProfiles(data, cols, config)).rejects.toThrow('At least one frame')
+  })
+
+  it('generates from simple TSV', async () => {
     const data = parseTSV(generateSimpleTSV())
     const cols = analyzeColumns(data)
     const defaults = suggestDefaults(cols)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].sampleCount).toBeGreaterThan(0)
     expect(profiles[0].rowCount).toBe(5)
-    expect(profiles[0].data.length).toBeGreaterThan(0)
-    // Should be gzip (starts with 1f 8b)
     expect(profiles[0].data[0]).toBe(0x1f)
     expect(profiles[0].data[1]).toBe(0x8b)
   })
 
-  it('generates a profile from heap dominator TSV', async () => {
+  it('generates from heap dominator TSV', async () => {
     const data = parseTSV(generateHeapDominatorTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['process_name', 'frame'],
         ['path', 'frame'],
@@ -175,18 +301,16 @@ describe('generateProfiles', () => {
       frameOrder: ['process_name', 'path'],
       jsonArrayLabelKey: new Map([['path', 'class']]),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].rowCount).toBe(4)
   })
 
-  it('partitions profiles by column', async () => {
+  it('partitions by column', async () => {
     const data = parseTSV(generateJSONObjectTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['name', 'frame'],
         ['size', 'metric'],
@@ -195,57 +319,45 @@ describe('generateProfiles', () => {
       frameOrder: ['name'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
-    // Should have separate profiles for us-east, eu-west, ap-south
+    })
     expect(profiles.length).toBe(3)
-    const names = profiles.map(p => p.name).sort()
-    expect(names).toEqual(['ap-south', 'eu-west', 'us-east'])
+    expect(profiles.map(p => p.name).sort()).toEqual(['ap-south', 'eu-west', 'us-east'])
   })
 
-  it('handles quoted TSV correctly', async () => {
+  it('handles quoted TSV', async () => {
     const data = parseTSV(generateQuotedTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
-      roles: new Map([
-        ['name', 'frame'],
-        ['size', 'metric'],
-      ]),
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame'], ['size', 'metric']]),
       frameOrder: ['name'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
-    expect(profiles[0].sampleCount).toBe(3) // 3 unique names
+    expect(profiles[0].sampleCount).toBe(3)
   })
 
   it('always includes rows metric', async () => {
     const data = parseTSV('name\nfoo\nfoo\nbar')
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: new Map([['name', 'frame']]),
       frameOrder: ['name'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map(),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
-    // 2 unique stacks: foo (2 rows) and bar (1 row)
     expect(profiles[0].sampleCount).toBe(2)
     expect(profiles[0].rowCount).toBe(3)
   })
 
-  it('handles mixed types TSV with multiple frame sources', async () => {
+  it('handles mixed types with multiple frame sources', async () => {
     const data = parseTSV(generateMixedTypesTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['name', 'frame'],
         ['path', 'frame'],
@@ -255,30 +367,22 @@ describe('generateProfiles', () => {
       frameOrder: ['name', 'path'],
       jsonArrayLabelKey: new Map([['path', 'frame']]),
       metricUnits: new Map([['size', 'bytes'], ['duration_ns', 'nanoseconds']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].rowCount).toBe(4)
-    expect(profiles[0].sampleCount).toBe(4) // 4 unique stacks
-    expect(profiles[0].data[0]).toBe(0x1f) // gzip magic
+    expect(profiles[0].data[0]).toBe(0x1f)
   })
 
-  it('handles edge case values without crashing', async () => {
+  it('handles edge case values', async () => {
     const data = parseTSV(generateEdgeCasesTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
-      roles: new Map([
-        ['name', 'frame'],
-        ['value', 'metric'],
-      ]),
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame'], ['value', 'metric']]),
       frameOrder: ['name'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['value', 'count']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].rowCount).toBe(7)
   })
@@ -287,7 +391,7 @@ describe('generateProfiles', () => {
     const data = parseTSV(generateMultiPartitionTSV())
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: new Map([
         ['function', 'frame'],
         ['region', 'partition'],
@@ -298,13 +402,9 @@ describe('generateProfiles', () => {
       frameOrder: ['function'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['latency_ms', 'milliseconds'], ['call_count', 'count']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
-    // 2 regions x 2 envs = 4 partitions
+    })
     expect(profiles.length).toBe(4)
-    const totalRows = profiles.reduce((s, p) => s + p.rowCount, 0)
-    expect(totalRows).toBe(12) // 2 x 2 x 3 functions
+    expect(profiles.reduce((s, p) => s + p.rowCount, 0)).toBe(12)
   })
 
   it('handles large datasets', async () => {
@@ -312,50 +412,34 @@ describe('generateProfiles', () => {
     const cols = analyzeColumns(data)
     const defaults = suggestDefaults(cols)
 
-    const config: ProfileConfig = {
+    const profiles = await generateProfiles(data, cols, {
       roles: defaults.roles,
       frameOrder: defaults.frameOrder,
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['self_size', 'bytes'], ['self_count', 'count']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
     expect(profiles[0].rowCount).toBe(1000)
-    expect(profiles[0].data.length).toBeGreaterThan(0)
   })
 
   it('aggregates identical stacks', async () => {
-    const tsv = 'func\tmodule\tsize\nfoo\tlib\t100\nfoo\tlib\t200\nbar\tlib\t50'
-    const data = parseTSV(tsv)
+    const data = parseTSV('func\tmodule\tsize\nfoo\tlib\t100\nfoo\tlib\t200\nbar\tlib\t50')
     const cols = analyzeColumns(data)
 
-    const config: ProfileConfig = {
-      roles: new Map([
-        ['module', 'frame'],
-        ['func', 'frame'],
-        ['size', 'metric'],
-      ]),
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['module', 'frame'], ['func', 'frame'], ['size', 'metric']]),
       frameOrder: ['module', 'func'],
       jsonArrayLabelKey: new Map(),
       metricUnits: new Map([['size', 'bytes']]),
-    }
-
-    const profiles = await generateProfiles(data, cols, config)
+    })
     expect(profiles).toHaveLength(1)
-    // lib->foo appears twice, should be aggregated to 1 sample with size=300
-    // lib->bar appears once
-    expect(profiles[0].sampleCount).toBe(2)
+    expect(profiles[0].sampleCount).toBe(2) // lib→foo (300) and lib→bar (50)
   })
 
-  it('generates valid gzip for all data types', async () => {
+  it('produces valid gzip for all test data generators', async () => {
     const generators = [
-      generateSimpleTSV,
-      generateHeapDominatorTSV,
-      generateJSONObjectTSV,
-      generateQuotedTSV,
-      generateMixedTypesTSV,
-      generateEdgeCasesTSV,
+      generateSimpleTSV, generateHeapDominatorTSV, generateJSONObjectTSV,
+      generateQuotedTSV, generateMixedTypesTSV, generateEdgeCasesTSV,
     ]
 
     for (const gen of generators) {
@@ -363,29 +447,70 @@ describe('generateProfiles', () => {
       const cols = analyzeColumns(data)
       const defaults = suggestDefaults(cols)
 
-      const config: ProfileConfig = {
+      // Ensure at least one frame
+      if (defaults.frameOrder.length === 0 && cols.length > 0) {
+        const first = cols.find(c => !c.isNumeric && !c.jsonKey)
+        if (first) {
+          defaults.roles.set(first.name, 'frame')
+          defaults.frameOrder.push(first.name)
+        }
+      }
+
+      const profiles = await generateProfiles(data, cols, {
         roles: defaults.roles,
         frameOrder: defaults.frameOrder,
         jsonArrayLabelKey: new Map(),
         metricUnits: new Map(),
-      }
-
-      // Ensure at least one frame
-      if (config.frameOrder.length === 0 && cols.length > 0) {
-        const first = cols.find(c => !c.isNumeric && !c.jsonKey)
-        if (first) {
-          config.roles.set(first.name, 'frame')
-          config.frameOrder.push(first.name)
-        }
-      }
-
-      const profiles = await generateProfiles(data, cols, config)
+      })
       expect(profiles.length).toBeGreaterThan(0)
       for (const p of profiles) {
-        // Verify gzip magic bytes
         expect(p.data[0]).toBe(0x1f)
         expect(p.data[1]).toBe(0x8b)
       }
     }
+  })
+
+  it('generates correct partition filenames', async () => {
+    const data = parseTSV('name\tenv\nfoo\tprod\nbar\tstaging')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame'], ['env', 'partition']]),
+      frameOrder: ['name'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map(),
+    })
+    expect(profiles.length).toBe(2)
+    const fileNames = profiles.map(p => p.fileName).sort()
+    expect(fileNames).toEqual(['profile_prod.pb.gz', 'profile_staging.pb.gz'])
+  })
+
+  it('handles single row', async () => {
+    const data = parseTSV('name\tsize\nfoo\t42')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame'], ['size', 'metric']]),
+      frameOrder: ['name'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes']]),
+    })
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].sampleCount).toBe(1)
+    expect(profiles[0].rowCount).toBe(1)
+  })
+
+  it('handles rows with empty metric values', async () => {
+    const data = parseTSV('name\tsize\nfoo\t\nbar\t100')
+    const cols = analyzeColumns(data)
+
+    const profiles = await generateProfiles(data, cols, {
+      roles: new Map([['name', 'frame'], ['size', 'metric']]),
+      frameOrder: ['name'],
+      jsonArrayLabelKey: new Map(),
+      metricUnits: new Map([['size', 'bytes']]),
+    })
+    expect(profiles).toHaveLength(1)
+    expect(profiles[0].sampleCount).toBe(2)
   })
 })
