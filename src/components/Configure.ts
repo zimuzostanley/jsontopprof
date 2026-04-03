@@ -22,8 +22,8 @@ function availableFor(role: ColumnRole): ColumnInfo[] {
     const current = S.roles.get(c.name) ?? 'none'
     if (current !== 'none') return false
     if (role === 'metric' && !c.isNumeric) return false
-    // JSON array sub-fields are per-element, only usable as Frame
-    if (c.isJsonArrayField && role !== 'frame') return false
+    // JSON array sub-fields can be Frame or Metric (not Label/Partition)
+    if (c.isJsonArrayField && role !== 'frame' && role !== 'metric') return false
     return true
   })
 }

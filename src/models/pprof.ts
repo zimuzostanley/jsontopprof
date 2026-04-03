@@ -314,6 +314,23 @@ function getMetricValue(
 ): number {
   const col = columns.find(c => c.name === metricName)
   if (!col) return 0
+
+  // JSON array sub-field: use the leaf (last) element's value
+  if (col.isJsonArrayField && col.jsonKey) {
+    const raw = row[col.source] ?? ''
+    try {
+      const arr = JSON.parse(raw.trim())
+      if (Array.isArray(arr) && arr.length > 0) {
+        const leaf = arr[arr.length - 1]
+        if (typeof leaf === 'object' && leaf !== null) {
+          const n = Number(leaf[col.jsonKey])
+          return isNaN(n) ? 0 : Math.max(0, Math.round(n))
+        }
+      }
+    } catch { /* fall through */ }
+    return 0
+  }
+
   return resolveNumericValue(row, col)
 }
 
