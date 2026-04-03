@@ -20,38 +20,57 @@ function toggleMetric(name: string): void {
   else S.textMetrics.add(name)
 }
 
-function formatSample(s: TextSample, metrics: Set<string>): string {
-  const stackStr = s.stack.join(';')
+type TextFormat = 'tree' | 'flat'
 
+function formatAnnotation(s: TextSample, metrics: Set<string>): string {
   const parts: string[] = []
-
-  // Metrics in brackets
   if (metrics.size > 0) {
     const vals = [...metrics]
       .filter(name => name in s.values)
       .map(name => `${name}: ${s.values[name].toLocaleString()}`)
     if (vals.length > 0) parts.push(vals.join(', '))
   }
-
-  // Labels in braces
   const labelKeys = Object.keys(s.labels)
   if (labelKeys.length > 0) {
-    const lbls = labelKeys.map(k => `${k}=${s.labels[k]}`)
-    parts.push(lbls.join(', '))
+    parts.push(labelKeys.map(k => `${k}=${s.labels[k]}`).join(', '))
   }
-
-  if (parts.length === 0) return stackStr
-  return `${stackStr} [${parts.join(' | ')}]`
+  return parts.length > 0 ? ` [${parts.join(' | ')}]` : ''
 }
 
-function formatProfile(profile: GeneratedProfile, metrics: Set<string>): string {
-  return profile.textSamples.map(s => formatSample(s, metrics)).join('\n')
+function formatSampleTree(s: TextSample, metrics: Set<string>): string {
+  const annotation = formatAnnotation(s, metrics)
+  if (s.stack.length === 1) return s.stack[0] + annotation
+  const lines: string[] = []
+  for (let i = 0; i < s.stack.length; i++) {
+    const indent = '  '.repeat(i)
+    const isLeaf = i === s.stack.length - 1
+    lines.push(indent + s.stack[i] + (isLeaf ? annotation : ''))
+  }
+  return lines.join('\n')
 }
 
-function formatAll(profiles: GeneratedProfile[], metrics: Set<string>): string {
-  if (profiles.length === 1) return formatProfile(profiles[0], metrics)
+function formatSampleFlat(s: TextSample, metrics: Set<string>): string {
+  return s.stack.join(';') + formatAnnotation(s, metrics)
+}
+
+function formatProfile(
+  profile: GeneratedProfile,
+  metrics: Set<string>,
+  fmt: TextFormat,
+): string {
+  const formatter = fmt === 'tree' ? formatSampleTree : formatSampleFlat
+  const separator = fmt === 'tree' ? '\n\n' : '\n'
+  return profile.textSamples.map(s => formatter(s, metrics)).join(separator)
+}
+
+function formatAll(
+  profiles: GeneratedProfile[],
+  metrics: Set<string>,
+  fmt: TextFormat,
+): string {
+  if (profiles.length === 1) return formatProfile(profiles[0], metrics, fmt)
   return profiles.map(p =>
-    `── ${p.name} (${p.rowCount} rows, ${p.sampleCount} samples) ──\n${formatProfile(p, metrics)}`
+    `── ${p.name} (${p.rowCount} rows, ${p.sampleCount} samples) ──\n${formatProfile(p, metrics, fmt)}`
   ).join('\n\n')
 }
 
@@ -77,6 +96,8 @@ function hasLabels(): boolean {
   )
 }
 
+let textFormat: TextFormat = 'tree'
+
 export const TextView: m.Component = {
   onremove() {
     if (copyTimer !== null) { clearTimeout(copyTimer); copyTimer = null }
@@ -89,27 +110,43 @@ export const TextView: m.Component = {
 
     const metricNames = getMetricNames()
     const metrics = S.textMetrics
-    const allText = formatAll(profiles, metrics)
+    const allText = formatAll(profiles, metrics, textFormat)
     const showLabels = hasLabels()
 
     return m('div', [
-      // Metric toggles
-      metricNames.length > 0 ? m('.card', [
-        m('.card-title', 'Visible metrics'),
-        m('.col-role', metricNames.map(name =>
-          m('button.role-btn', {
-            key: name,
-            class: metrics.has(name) ? 'active' : '',
-            onclick: () => toggleMetric(name),
-          }, name)
-        )),
+      // Controls card
+      m('.card', [
+        m('.card-title-row', [
+          m('.card-title', 'Visible metrics'),
+          m('.view-toggle', [
+            m('button', {
+              class: textFormat === 'tree' ? 'active' : '',
+              onclick: () => { textFormat = 'tree' },
+              title: 'Indented stack view',
+            }, 'Tree'),
+            m('button', {
+              class: textFormat === 'flat' ? 'active' : '',
+              onclick: () => { textFormat = 'flat' },
+              title: 'Semicolon-separated (flamegraph format)',
+            }, 'Flat'),
+          ]),
+        ]),
+        metricNames.length > 0
+          ? m('.col-role', metricNames.map(name =>
+              m('button.role-btn', {
+                key: name,
+                class: metrics.has(name) ? 'active' : '',
+                onclick: () => toggleMetric(name),
+              }, name)
+            ))
+          : null,
         showLabels
           ? m('div', { style: 'margin-top: 6px; font-size: 0.72rem; color: var(--text-tertiary);' },
-              'Labels shown automatically in {braces}')
+              'Labels shown automatically in brackets')
           : null,
-      ]) : null,
+      ]),
 
-      // Copy all + feedback
+      // Copy bar
       m('.actions.actions-flush', [
         copyFeedback ? m('.copy-feedback', copyFeedback) : null,
         m('.spacer'),
@@ -120,7 +157,7 @@ export const TextView: m.Component = {
 
       // Per-profile text blocks
       profiles.map(p => {
-        const text = formatProfile(p, metrics)
+        const text = formatProfile(p, metrics, textFormat)
         return m('div', { key: p.fileName }, [
           profiles.length > 1
             ? m('.text-profile-header', [
