@@ -121,19 +121,21 @@ export const Configure: m.Component = {
           ...metrics.map(col =>
             m('.metric-item', { key: col.name }, [
               m('.metric-name', colLabel(col)),
-              m('input[type=text].unit-input', {
-                'aria-label': `Unit for ${col.name}`,
-                list: 'unit-suggestions',
-                value: S.metricUnits.get(col.name) ?? 'count',
-                oninput: (e: InputEvent) => {
-                  S.metricUnits.set(col.name, (e.target as HTMLInputElement).value)
-                },
-                placeholder: 'unit',
-              }),
-              m('button.remove-btn', {
-                onclick: () => removeColumn(col.name),
-                'aria-label': `Remove ${col.name}`,
-              }, '\u00D7'),
+              m('.metric-controls', [
+                m('input[type=text].unit-input', {
+                  'aria-label': `Unit for ${col.name}`,
+                  list: 'unit-suggestions',
+                  value: S.metricUnits.get(col.name) ?? 'count',
+                  oninput: (e: InputEvent) => {
+                    S.metricUnits.set(col.name, (e.target as HTMLInputElement).value)
+                  },
+                  placeholder: 'unit',
+                }),
+                m('button.remove-btn', {
+                  onclick: () => removeColumn(col.name),
+                  'aria-label': `Remove ${col.name}`,
+                }, '\u00D7'),
+              ]),
             ])
           ),
           m('datalist#unit-suggestions', { key: '_datalist' },

@@ -334,7 +334,8 @@ select { cursor: pointer; }
 }
 .metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.unit-input { width: 180px; font-family: var(--mono) !important; font-size: 0.75rem !important; }
+.metric-controls { display: flex; align-items: center; gap: 4px; width: 180px; justify-content: flex-end; }
+.unit-input { flex: 1; min-width: 0; font-family: var(--mono) !important; font-size: 0.75rem !important; }
 
 /* --- Results --- */
 .profile-list { display: flex; flex-direction: column; gap: 6px; }
