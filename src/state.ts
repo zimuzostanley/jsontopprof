@@ -78,7 +78,7 @@ export interface State {
   profiles: GeneratedProfile[]
   generating: boolean
   generateError: string
-  resultsView: 'cards' | 'text'
+  resultsView: 'pprofs' | 'text'
   textMetrics: Set<string>
   progress: GenerateProgress | null
 }
@@ -111,7 +111,7 @@ export const S: State = {
   generating: false,
   generateError: '',
   progress: null,
-  resultsView: 'cards',
+  resultsView: 'pprofs',
   textMetrics: new Set(),
 }
 
@@ -225,7 +225,7 @@ export async function generate(): Promise<void> {
       m.redraw()
     })
     S.step = 'results'
-    S.resultsView = 'cards'
+    S.resultsView = 'pprofs'
 
     // Init text metrics from first profile's sample keys
     if (S.profiles.length > 0 && S.profiles[0].textSamples.length > 0) {
@@ -259,7 +259,7 @@ export function reset(): void {
   S.generating = false
   S.generateError = ''
   S.progress = null
-  S.resultsView = 'cards'
+  S.resultsView = 'pprofs'
   S.textMetrics = new Set()
 }
 

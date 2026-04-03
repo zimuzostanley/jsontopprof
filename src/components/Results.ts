@@ -53,14 +53,25 @@ export const Results: m.Component = {
 
     return m('div', [
       // Summary card with view toggle
+      // Hint: open in Perfetto
+      m('.card.hint-card', [
+        m('.hint-text', [
+          'Download and open in ',
+          m('strong', 'Perfetto UI'),
+          ' at ',
+          m('code.code-inline', 'ui.perfetto.dev'),
+        ]),
+      ]),
+
+      // Summary
       m('.card', [
         m('.card-title-row', [
-          m('.card-title', 'Generated profiles'),
+          m('.card-title', 'Generated pprofs'),
           m('.view-toggle', [
             m('button', {
               class: !isText ? 'active' : '',
-              onclick: () => { S.resultsView = 'cards' },
-            }, 'Cards'),
+              onclick: () => { S.resultsView = 'pprofs' },
+            }, 'Pprofs'),
             m('button', {
               class: isText ? 'active' : '',
               onclick: () => { S.resultsView = 'text' },
@@ -68,7 +79,7 @@ export const Results: m.Component = {
           ]),
         ]),
         m('.stats', [
-          m('.stat', [m('strong', profiles.length), profiles.length === 1 ? ' profile' : ' profiles']),
+          m('.stat', [m('strong', profiles.length), profiles.length === 1 ? ' pprof' : ' pprofs']),
           m('.stat', [m('strong', totalRows.toLocaleString()), ' total rows']),
           m('.stat', [m('strong', totalSamples.toLocaleString()), ' unique stacks']),
           m('.stat', [m('strong', formatBytes(totalBytes)), ' total size']),
@@ -116,17 +127,6 @@ export const Results: m.Component = {
 
       // Text view
       isText ? m(TextView) : null,
-
-      // Usage hint
-      m('.card.section-gap.hint-card', [
-        m('.card-title', 'View profiles'),
-        m('.hint-text', [
-          'Upload to ',
-          m('strong', 'Perfetto UI'),
-          ' at ',
-          m('code.code-inline', 'ui.perfetto.dev'),
-        ]),
-      ]),
     ])
   },
 }
