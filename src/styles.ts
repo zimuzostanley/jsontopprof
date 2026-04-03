@@ -227,7 +227,7 @@ select { cursor: pointer; }
 
 /* --- Configure: add column dropdown --- */
 .add-col-select {
-  width: 180px;
+  width: 140px;
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -334,7 +334,7 @@ select { cursor: pointer; }
 }
 .metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.metric-controls { display: flex; align-items: center; gap: 4px; width: 180px; justify-content: flex-end; }
+.metric-controls { display: flex; align-items: center; gap: 4px; width: 140px; justify-content: flex-end; }
 .unit-input { flex: 1; min-width: 0; font-family: var(--mono) !important; font-size: 0.75rem !important; }
 
 /* --- Results --- */
