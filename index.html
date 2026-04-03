@@ -1154,16 +1154,23 @@ var request$2 = function($window, oncompletion) {
 };
 var mountRedraw$2 = mountRedraw$3;
 var request$1 = request$2(typeof window !== "undefined" ? window : null, mountRedraw$2.redraw);
-var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
-var decodeURIComponentSafe$1 = function(str) {
-  return String(str).replace(validUtf8Encodings, decodeURIComponent);
-};
+var decodeURIComponentSafe$1;
+var hasRequiredDecodeURIComponentSafe;
+function requireDecodeURIComponentSafe() {
+  if (hasRequiredDecodeURIComponentSafe) return decodeURIComponentSafe$1;
+  hasRequiredDecodeURIComponentSafe = 1;
+  var validUtf8Encodings = /%(?:[0-7]|(?!c[01]|e0%[89]|ed%[ab]|f0%8|f4%[9ab])(?:c|d|(?:e|f[0-4]%[89ab])[\da-f]%[89ab])[\da-f]%[89ab])[\da-f]/gi;
+  decodeURIComponentSafe$1 = function(str) {
+    return String(str).replace(validUtf8Encodings, decodeURIComponent);
+  };
+  return decodeURIComponentSafe$1;
+}
 var parse$1;
 var hasRequiredParse$1;
 function requireParse$1() {
   if (hasRequiredParse$1) return parse$1;
   hasRequiredParse$1 = 1;
-  var decodeURIComponentSafe2 = decodeURIComponentSafe$1;
+  var decodeURIComponentSafe2 = requireDecodeURIComponentSafe();
   parse$1 = function(string) {
     if (string === "" || string == null) return {};
     if (string.charAt(0) === "?") string = string.slice(1);
@@ -1283,7 +1290,7 @@ function requireCensor() {
 }
 var Vnode = requireVnode();
 var hyperscript$1 = hyperscript_1$1;
-var decodeURIComponentSafe = decodeURIComponentSafe$1;
+var decodeURIComponentSafe = requireDecodeURIComponentSafe();
 var buildPathname = requireBuild();
 var parsePathname = requireParse();
 var compileTemplate = compileTemplate$1;
@@ -3227,7 +3234,7 @@ select { cursor: pointer; }
 
 /* --- Configure: add column dropdown --- */
 .add-col-select {
-  width: 140px;
+  width: 110px;
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -3334,7 +3341,7 @@ select { cursor: pointer; }
 }
 .metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.metric-controls { display: flex; align-items: center; gap: 4px; width: 140px; justify-content: flex-end; }
+.metric-controls { display: flex; align-items: center; gap: 4px; width: 110px; justify-content: flex-end; }
 .unit-input { flex: 1; min-width: 0; font-family: var(--mono) !important; font-size: 0.75rem !important; }
 
 /* --- Results --- */
@@ -3524,7 +3531,7 @@ select { cursor: pointer; }
 @media (max-width: 600px) {
   .shell { padding: 12px 8px 36px; }
   .profile-card { flex-direction: column; align-items: stretch; gap: 6px; }
-  .add-col-select { width: 140px; }
+  .add-col-select { width: 110px; }
 }
 `;
 const style = document.createElement("style");
