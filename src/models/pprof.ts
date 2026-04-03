@@ -173,7 +173,7 @@ class PprofBuilder {
     parts.push(this.strings.encode())
 
     if (this.metricNames.length > 0) {
-      parts.push(fieldVarint(15, this.strings.intern(this.metricNames[0])))
+      parts.push(fieldVarint(14, this.strings.intern(this.metricNames[0])))
     }
 
     return concat(...parts)
