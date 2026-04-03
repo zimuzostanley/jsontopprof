@@ -202,22 +202,36 @@ function resolveNumericValue(row: Record<string, string>, col: ColumnInfo): numb
 }
 
 
+interface StackResult {
+  stack: string[]
+  frameValues: Record<string, number>[]  // per-frame numeric values from JSON array elements
+}
+
 function buildStack(
   row: Record<string, string>,
   frameOrder: string[],
   columns: ColumnInfo[],
-): string[] {
+  metricColumns: ColumnInfo[],
+): StackResult {
   const stack: string[] = []
+  const frameValues: Record<string, number>[] = []
 
-  // Group consecutive JSON array sub-fields from the same source array.
-  // e.g., [path.class, path.count] → one expansion with combined labels.
+  // Collect metric column names that come from JSON arrays (for per-frame values)
+  const arrayMetricKeys = new Map<string, string[]>() // source → [jsonKey, ...]
+  for (const mc of metricColumns) {
+    if (mc.isJsonArrayField && mc.jsonKey) {
+      const keys = arrayMetricKeys.get(mc.source) ?? []
+      keys.push(mc.jsonKey)
+      arrayMetricKeys.set(mc.source, keys)
+    }
+  }
+
   let i = 0
   while (i < frameOrder.length) {
     const col = columns.find(c => c.name === frameOrder[i])
     if (!col) { i++; continue }
 
     if (col.isJsonArrayField && col.jsonKey) {
-      // Collect all consecutive sub-fields from the same array
       const source = col.source
       const keys: string[] = [col.jsonKey]
       let j = i + 1
@@ -231,8 +245,8 @@ function buildStack(
         }
       }
 
-      // Expand the array: each element becomes one frame with combined keys
       const raw = row[source] ?? ''
+      const metricKeys = arrayMetricKeys.get(source) ?? []
       try {
         const arr = JSON.parse(raw.trim())
         if (Array.isArray(arr)) {
@@ -249,35 +263,49 @@ function buildStack(
                   .join(', ')
                 stack.push(extra ? `${primary} (${extra})` : primary)
               }
+              // Capture per-frame numeric values
+              const fv: Record<string, number> = {}
+              for (const mk of metricKeys) {
+                const v = Number(elem[mk])
+                if (!isNaN(v)) fv[`${source}.${mk}`] = v
+              }
+              frameValues.push(fv)
             } else {
               stack.push(String(elem ?? '(null)'))
+              frameValues.push({})
             }
           }
         }
       } catch {
         stack.push(raw || '(parse error)')
+        frameValues.push({})
       }
       i = j
     } else if (col.isJsonArray) {
-      // Primitive JSON array
       const raw = row[col.name] ?? ''
       try {
         const arr = JSON.parse(raw.trim())
         if (Array.isArray(arr)) {
-          for (const elem of arr) stack.push(String(elem ?? '(null)'))
+          for (const elem of arr) {
+            stack.push(String(elem ?? '(null)'))
+            frameValues.push({})
+          }
         }
       } catch {
         stack.push(raw || '(parse error)')
+        frameValues.push({})
       }
       i++
     } else {
       const val = resolveStringValue(row, col)
       stack.push(val || '(empty)')
+      frameValues.push({})
       i++
     }
   }
 
-  return stack.length > 0 ? stack : ['(no frames)']
+  if (stack.length === 0) { stack.push('(no frames)'); frameValues.push({}) }
+  return { stack, frameValues }
 }
 
 function getMetricValue(
@@ -357,6 +385,10 @@ export async function generateProfiles(
     .filter(([, role]) => role === 'metric')
     .map(([name]) => name)
 
+  const metricColumnInfos = metricColumns
+    .map(name => columns.find(c => c.name === name))
+    .filter((c): c is ColumnInfo => c !== undefined)
+
   const labelColumnNames = [...config.roles.entries()]
     .filter(([, role]) => role === 'label')
     .map(([name]) => name)
@@ -396,31 +428,36 @@ export async function generateProfiles(
     const textSamples: TextSample[] = []
 
     function toTextSample(
-      stack: string[],
+      sr: StackResult,
       values: number[],
       lbls: Record<string, string> = {},
     ): TextSample {
       const rec: Record<string, number> = {}
       for (let i = 0; i < allMetricNames.length; i++) rec[allMetricNames[i]] = values[i]
-      return { stack, values: rec, labels: lbls }
+      return {
+        stack: sr.stack,
+        values: rec,
+        labels: lbls,
+        frameValues: sr.frameValues.length > 0 ? sr.frameValues : undefined,
+      }
     }
 
     if (hasLabels) {
       for (const row of rows) {
-        const stack = buildStack(row, config.frameOrder, columns)
+        const sr = buildStack(row, config.frameOrder, columns, metricColumnInfos)
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
         const sampleLabels = buildLabels(row, labelColumnInfos)
-        builder.addSample(stack, values, sampleLabels)
+        builder.addSample(sr.stack, values, sampleLabels)
         const labelRec: Record<string, string> = {}
         for (const l of sampleLabels) labelRec[l.key] = l.value
-        textSamples.push(toTextSample(stack, values, labelRec))
+        textSamples.push(toTextSample(sr, values, labelRec))
       }
     } else {
-      const stacks = new Map<string, { stack: string[]; values: number[] }>()
+      const stacks = new Map<string, { sr: StackResult; values: number[] }>()
       for (const row of rows) {
-        const stack = buildStack(row, config.frameOrder, columns)
-        const stackKey = stack.join('\x00')
+        const sr = buildStack(row, config.frameOrder, columns, metricColumnInfos)
+        const stackKey = sr.stack.join('\x00')
         const values = metricColumns.map(name => getMetricValue(row, name, columns))
         values.push(1)
 
@@ -428,12 +465,12 @@ export async function generateProfiles(
         if (existing) {
           for (let i = 0; i < values.length; i++) existing.values[i] += values[i]
         } else {
-          stacks.set(stackKey, { stack, values })
+          stacks.set(stackKey, { sr, values })
         }
       }
-      for (const { stack, values } of stacks.values()) {
-        builder.addSample(stack, values, [])
-        textSamples.push(toTextSample(stack, values))
+      for (const { sr, values } of stacks.values()) {
+        builder.addSample(sr.stack, values, [])
+        textSamples.push(toTextSample(sr, values))
       }
     }
 
@@ -465,7 +502,7 @@ export async function generateProfiles(
       fileName,
       data: compressed,
       sampleCount: hasLabels ? rows.length : new Set(
-        rows.map(row => buildStack(row, config.frameOrder, columns).join('\x00'))
+        rows.map(row => buildStack(row, config.frameOrder, columns, metricColumnInfos).stack.join('\x00'))
       ).size,
       rowCount: rows.length,
       partitionValues: partValues,

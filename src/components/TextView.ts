@@ -41,7 +41,18 @@ function formatSampleTree(s: TextSample, metrics: Set<string>): string {
   const annotation = formatAnnotation(s, metrics)
   const lines: string[] = []
   for (let i = 0; i < s.stack.length; i++) {
-    lines.push('  '.repeat(i) + s.stack[i] + annotation)
+    // Per-frame values from frameValues, or sample-level on leaf
+    const frameVals = s.frameValues?.[i]
+    if (frameVals && Object.keys(frameVals).length > 0) {
+      const parts = [...metrics]
+        .filter(m => m in frameVals)
+        .map(m => `${m}: ${frameVals[m].toLocaleString()}`)
+      const fAnnotation = parts.length > 0 ? ` [${parts.join(', ')}]` : ''
+      lines.push('  '.repeat(i) + s.stack[i] + fAnnotation)
+    } else {
+      const isLeaf = i === s.stack.length - 1
+      lines.push('  '.repeat(i) + s.stack[i] + (isLeaf ? annotation : ''))
+    }
   }
   return lines.join('\n')
 }
@@ -81,10 +92,19 @@ async function copyText(text: string, label: string): Promise<void> {
 }
 
 function getMetricNames(): string[] {
+  const names = new Set<string>()
   for (const p of S.profiles) {
-    if (p.textSamples.length > 0) return Object.keys(p.textSamples[0].values)
+    for (const s of p.textSamples) {
+      for (const k of Object.keys(s.values)) names.add(k)
+      if (s.frameValues) {
+        for (const fv of s.frameValues) {
+          for (const k of Object.keys(fv)) names.add(k)
+        }
+      }
+      if (names.size > 0) return [...names]
+    }
   }
-  return []
+  return [...names]
 }
 
 function hasLabels(): boolean {

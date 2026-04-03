@@ -49,6 +49,7 @@ export interface TextSample {
   stack: string[]
   values: Record<string, number>
   labels: Record<string, string>
+  frameValues?: Record<string, number>[]
 }
 
 /** A generated pprof profile */
