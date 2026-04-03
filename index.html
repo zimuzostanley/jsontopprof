@@ -2188,7 +2188,7 @@ const S = {
   generating: false,
   generateError: "",
   progress: null,
-  resultsView: "cards",
+  resultsView: "pprofs",
   textMetrics: /* @__PURE__ */ new Set()
 };
 function applyTheme(theme) {
@@ -2289,7 +2289,7 @@ async function generate() {
       m$1.redraw();
     });
     S.step = "results";
-    S.resultsView = "cards";
+    S.resultsView = "pprofs";
     if (S.profiles.length > 0 && S.profiles[0].textSamples.length > 0) {
       S.textMetrics = new Set(Object.keys(S.profiles[0].textSamples[0].values));
     }
@@ -2318,7 +2318,7 @@ function reset() {
   S.generating = false;
   S.generateError = "";
   S.progress = null;
-  S.resultsView = "cards";
+  S.resultsView = "pprofs";
   S.textMetrics = /* @__PURE__ */ new Set();
 }
 function downloadProfile(profile) {
@@ -2840,16 +2840,26 @@ const Results = {
     const isText = S.resultsView === "text";
     return m$1("div", [
       // Summary card with view toggle
+      // Hint: open in Perfetto
+      m$1(".card.hint-card", [
+        m$1(".hint-text", [
+          "Download and open in ",
+          m$1("strong", "Perfetto UI"),
+          " at ",
+          m$1("code.code-inline", "ui.perfetto.dev")
+        ])
+      ]),
+      // Summary
       m$1(".card", [
         m$1(".card-title-row", [
-          m$1(".card-title", "Generated profiles"),
+          m$1(".card-title", "Generated pprofs"),
           m$1(".view-toggle", [
             m$1("button", {
               class: !isText ? "active" : "",
               onclick: () => {
-                S.resultsView = "cards";
+                S.resultsView = "pprofs";
               }
-            }, "Cards"),
+            }, "Pprofs"),
             m$1("button", {
               class: isText ? "active" : "",
               onclick: () => {
@@ -2859,7 +2869,7 @@ const Results = {
           ])
         ]),
         m$1(".stats", [
-          m$1(".stat", [m$1("strong", profiles.length), profiles.length === 1 ? " profile" : " profiles"]),
+          m$1(".stat", [m$1("strong", profiles.length), profiles.length === 1 ? " pprof" : " pprofs"]),
           m$1(".stat", [m$1("strong", totalRows.toLocaleString()), " total rows"]),
           m$1(".stat", [m$1("strong", totalSamples.toLocaleString()), " unique stacks"]),
           m$1(".stat", [m$1("strong", formatBytes(totalBytes)), " total size"])
@@ -2900,17 +2910,7 @@ const Results = {
         ])
       )) : null,
       // Text view
-      isText ? m$1(TextView) : null,
-      // Usage hint
-      m$1(".card.section-gap.hint-card", [
-        m$1(".card-title", "View profiles"),
-        m$1(".hint-text", [
-          "Upload to ",
-          m$1("strong", "Perfetto UI"),
-          " at ",
-          m$1("code.code-inline", "ui.perfetto.dev")
-        ])
-      ])
+      isText ? m$1(TextView) : null
     ]);
   }
 };
@@ -3288,7 +3288,7 @@ select { cursor: pointer; }
 }
 .metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.unit-input { width: 100px; font-family: var(--mono) !important; font-size: 0.75rem !important; }
+.unit-input { width: 180px; font-family: var(--mono) !important; font-size: 0.75rem !important; }
 
 /* --- Results --- */
 .profile-list { display: flex; flex-direction: column; gap: 6px; }
