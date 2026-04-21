@@ -233,12 +233,19 @@ select { cursor: pointer; }
 .preview-table tr:last-child td { border-bottom: none; }
 .preview-table .truncated { color: var(--text-tertiary); font-style: italic; }
 
-/* --- Configure: add column dropdown (styled as button) --- */
-.add-col-select {
+/* --- Configure: add column trigger (popover) --- */
+.add-wrapper {
+  position: relative;
+  display: inline-flex;
   flex-shrink: 0;
-  min-width: 120px;
+}
+.add-col-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
   height: 28px;
-  padding: 0 24px 0 10px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
@@ -248,22 +255,129 @@ select { cursor: pointer; }
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 12px) 12px, calc(100% - 7px) 12px;
-  background-size: 5px 5px;
-  background-repeat: no-repeat;
+  text-align: left;
+  user-select: none;
 }
-.add-col-select:hover {
-  background-color: var(--bg-hover);
+.add-col-btn:hover {
+  background: var(--bg-hover);
   color: var(--text);
   border-color: var(--border-focus);
 }
-.add-col-select:focus {
+.add-col-btn:focus-visible {
   outline: none;
   border-color: var(--border-focus);
+}
+.add-col-btn.open {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.add-col-btn-plus {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+.add-col-btn:hover .add-col-btn-plus,
+.add-col-btn.open .add-col-btn-plus { color: inherit; }
+.add-col-btn-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Popover menu --- */
+.add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 280px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  z-index: 20;
+  overflow: hidden;
+  animation: menuIn 120ms ease-out;
+}
+[data-theme="dark"] .add-menu {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.3);
+}
+@keyframes menuIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.add-menu-search {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-input);
+}
+.add-menu-search input[type="text"] {
+  width: 100%;
+  height: 34px !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 12px !important;
+  font-family: var(--sans) !important;
+  font-size: 0.82rem !important;
+  color: var(--text) !important;
+}
+.add-menu-search input[type="text"]:focus {
+  outline: none !important;
+  border: none !important;
+}
+.add-menu-search input[type="text"]::placeholder { color: var(--text-tertiary); }
+
+.add-menu-list {
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.add-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.add-menu-item:hover { background: var(--bg-hover); }
+.add-menu-item:first-child:hover { background: var(--accent-bg); color: var(--accent); }
+.add-menu-item-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-menu-item-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-accent);
+  color: var(--text-tertiary);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+.add-menu-empty {
+  padding: 14px 12px;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 
 /* --- Configure: empty state --- */
@@ -675,7 +789,8 @@ select { cursor: pointer; }
 @media (max-width: 600px) {
   .shell { padding: 12px 8px 36px; }
   .profile-card { flex-direction: column; align-items: stretch; gap: 6px; }
-  .add-col-select { min-width: 104px; }
+  .add-col-btn { width: 116px; }
+  .add-menu { width: 240px; }
   .card-title-row { flex-wrap: wrap; }
 }
 `

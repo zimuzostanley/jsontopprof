@@ -7,6 +7,21 @@ const UNIT_SUGGESTIONS = [
   'objects', 'pages', 'requests', 'errors',
 ]
 
+// ── Add-menu popover state (single menu open at a time) ──
+
+let menu: { role: ColumnRole; filter: string } | null = null
+let menuCleanup: (() => void) | null = null
+
+function openMenu(role: ColumnRole): void {
+  menu = { role, filter: '' }
+}
+
+function closeMenu(): void {
+  menu = null
+}
+
+// ── Column helpers ──
+
 function isJsonParent(col: ColumnInfo): boolean {
   if (col.isJsonArray) return true
   if (S.columns.some(c => c.source === col.name && c.jsonKey !== undefined && !c.isJsonArrayField)) {
@@ -15,14 +30,13 @@ function isJsonParent(col: ColumnInfo): boolean {
   return false
 }
 
-/** Columns available to assign (not already assigned + not JSON parents). */
 function availableFor(role: ColumnRole): ColumnInfo[] {
   return S.columns.filter(c => {
     if (isJsonParent(c)) return false
     const current = S.roles.get(c.name) ?? 'none'
     if (current !== 'none') return false
     if (role === 'metric' && !c.isNumeric) return false
-    // JSON array sub-fields can be Frame or Metric (not Label/Partition)
+    // JSON array sub-fields can be Frame or Metric only
     if (c.isJsonArrayField && role !== 'frame' && role !== 'metric') return false
     return true
   })
@@ -39,19 +53,110 @@ function colLabel(col: ColumnInfo): string {
   return col.name
 }
 
-function renderAddDropdown(role: ColumnRole, label: string): m.Vnode | null {
+// ── Add trigger + popover ──
+
+function setupMenuListeners(menuEl: HTMLElement): void {
+  const wrapper = menuEl.parentElement
+  if (!wrapper) return
+
+  // Focus the search input if present
+  const input = menuEl.querySelector<HTMLInputElement>('input[data-menu-input]')
+  input?.focus()
+
+  const onMouseDown = (e: MouseEvent): void => {
+    if (!wrapper.contains(e.target as Node)) {
+      closeMenu()
+      m.redraw()
+    }
+  }
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      closeMenu()
+      m.redraw()
+    }
+  }
+  document.addEventListener('mousedown', onMouseDown)
+  document.addEventListener('keydown', onKey)
+  menuCleanup = () => {
+    document.removeEventListener('mousedown', onMouseDown)
+    document.removeEventListener('keydown', onKey)
+    menuCleanup = null
+  }
+}
+
+function renderMenu(role: ColumnRole, available: ColumnInfo[]): m.Vnode {
+  const filter = (menu?.filter ?? '').trim().toLowerCase()
+  const filtered = filter === ''
+    ? available
+    : available.filter(c => colLabel(c).toLowerCase().includes(filter))
+  const showSearch = available.length > 5
+
+  return m('.add-menu', {
+    oncreate: (vnode: m.VnodeDOM) => setupMenuListeners(vnode.dom as HTMLElement),
+    onremove: () => { if (menuCleanup) menuCleanup() },
+    role: 'listbox',
+  }, [
+    showSearch ? m('.add-menu-search', [
+      m('input[type=text]', {
+        'data-menu-input': '',
+        placeholder: 'Filter columns…',
+        value: menu?.filter ?? '',
+        oninput: (e: InputEvent) => {
+          if (menu) menu.filter = (e.target as HTMLInputElement).value
+        },
+        onkeydown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' && filtered.length > 0) {
+            e.preventDefault()
+            setRole(filtered[0].name, role)
+            closeMenu()
+          }
+        },
+      }),
+    ]) : null,
+
+    m('.add-menu-list',
+      filtered.length === 0
+        ? m('.add-menu-empty', 'No matching columns')
+        : filtered.map(c =>
+            m('.add-menu-item', {
+              key: c.name,
+              role: 'option',
+              onclick: () => {
+                setRole(c.name, role)
+                closeMenu()
+              },
+            }, [
+              m('span.add-menu-item-name', colLabel(c)),
+              c.isJsonArrayField
+                ? m('span.add-menu-item-tag', 'json')
+                : c.isNumeric
+                  ? m('span.add-menu-item-tag', 'num')
+                  : null,
+            ])
+          ),
+    ),
+  ])
+}
+
+function renderAddTrigger(role: ColumnRole, label: string): m.Vnode | null {
   const available = availableFor(role)
   if (available.length === 0) return null
-  return m('select.add-col-select', {
-    'aria-label': label,
-    value: '',
-    onchange: (e: Event) => {
-      const val = (e.target as HTMLSelectElement).value
-      if (val) setRole(val, role)
-    },
-  }, [
-    m('option', { value: '', disabled: true, selected: true }, `+ ${label}`),
-    ...available.map(c => m('option', { value: c.name }, colLabel(c))),
+  const isOpen = menu !== null && menu.role === role
+  return m('.add-wrapper', [
+    m('button.add-col-btn' + (isOpen ? '.open' : ''), {
+      type: 'button',
+      'aria-haspopup': 'listbox',
+      'aria-expanded': String(isOpen),
+      onclick: (e: MouseEvent) => {
+        e.stopPropagation()
+        if (isOpen) closeMenu()
+        else openMenu(role)
+      },
+    }, [
+      m('span.add-col-btn-plus', '+'),
+      m('span.add-col-btn-text', label),
+    ]),
+    isOpen ? renderMenu(role, available) : null,
   ])
 }
 
@@ -66,7 +171,7 @@ function sectionHeader(
       m('.card-title', title),
       m('.section-subtitle', subtitle),
     ]),
-    renderAddDropdown(role, addLabel),
+    renderAddTrigger(role, addLabel),
   ])
 }
 
@@ -79,12 +184,17 @@ function removeBtn(name: string): m.Vnode {
 }
 
 export const Configure: m.Component = {
+  onremove() {
+    // Tear down any open menu listeners if navigating away
+    if (menuCleanup) menuCleanup()
+    closeMenu()
+  },
+
   view() {
     if (!S.data) return null
 
     const frames = assignedAs('frame')
     const metrics = assignedAs('metric')
-    const labels = assignedAs('label')
     const partitions = assignedAs('partition')
 
     return m('div', [
@@ -168,24 +278,6 @@ export const Configure: m.Component = {
             m('.rows-badge', 'auto — one per input row'),
           ]),
         ]),
-      ]),
-
-      // Labels
-      m('.card', [
-        sectionHeader(
-          'Labels',
-          'Extra metadata attached to every sample.',
-          'label',
-          'Add label',
-        ),
-        labels.length === 0
-          ? m('.empty-hint.empty-hint-block', 'Optional.')
-          : m('.tag-list', labels.map(col =>
-              m('.tag-item', { key: col.name }, [
-                m('span', colLabel(col)),
-                removeBtn(col.name),
-              ])
-            )),
       ]),
 
       // Partition

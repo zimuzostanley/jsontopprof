@@ -59,23 +59,30 @@ async function loadTSV(tsv: string): Promise<void> {
   await page.waitForSelector('.card-title', { timeout: 5000 })
 }
 
-/** Add a column to a role section via its dropdown. */
+/** Add a column to a role section via its popover menu. */
 async function addToRole(colName: string, sectionTitle: string): Promise<void> {
-  await page.evaluate((name: string, title: string) => {
+  // Open the section's add popover
+  await page.evaluate((title: string) => {
     const cards = document.querySelectorAll('.card')
     for (const card of cards) {
       const cardTitle = card.querySelector('.card-title')?.textContent?.trim()
       if (cardTitle === title) {
-        const sel = card.querySelector('.add-col-select') as HTMLSelectElement
-        if (sel) {
-          sel.value = name
-          sel.dispatchEvent(new Event('change', { bubbles: true }))
-        }
+        const btn = card.querySelector('.add-col-btn') as HTMLButtonElement | null
+        btn?.click()
+        return
       }
     }
-  }, colName, sectionTitle)
-  // Wait for Mithril redraw
-  await new Promise(r => setTimeout(r, 100))
+  }, sectionTitle)
+  await page.waitForSelector('.add-menu', { timeout: 1000 })
+  // Click the matching item
+  await page.evaluate((name: string) => {
+    const items = document.querySelectorAll('.add-menu-item')
+    for (const item of items) {
+      const n = item.querySelector('.add-menu-item-name')?.textContent?.trim()
+      if (n === name) { (item as HTMLElement).click(); return }
+    }
+  }, colName)
+  await new Promise(r => setTimeout(r, 120))
 }
 
 async function generate(): Promise<void> {
@@ -151,15 +158,14 @@ describe('e2e: theme', () => {
   })
 })
 
-// ── Partitioning + labels ──
+// ── Partitioning ──
 
-describe('e2e: partitions and labels', () => {
+describe('e2e: partitions', () => {
   it('loads and assigns roles', async () => {
     await loadTSV(PARTITION_TSV)
     await addToRole('func', 'Frames')
     await addToRole('size', 'Metrics')
     await addToRole('env', 'Partition by')
-    await addToRole('thread', 'Labels')
   }, 15000)
 
   it('generates partitioned profiles', async () => {
@@ -223,17 +229,24 @@ describe('e2e: text view', () => {
 describe('e2e: JSON array stack', () => {
   it('expands JSON array sub-fields as columns', async () => {
     await loadTSV(HEAP_TSV)
-    // Check that add-frame dropdown contains path.class
-    const options = await page.evaluate(() => {
+    // Open the Frames add-menu and read its items
+    await page.evaluate(() => {
       const cards = document.querySelectorAll('.card')
       for (const card of cards) {
         if (card.querySelector('.card-title')?.textContent?.trim() === 'Frames') {
-          const sel = card.querySelector('.add-col-select') as HTMLSelectElement
-          return [...sel.options].map(o => o.value).filter(v => v)
+          (card.querySelector('.add-col-btn') as HTMLButtonElement | null)?.click()
+          return
         }
       }
-      return []
     })
+    await page.waitForSelector('.add-menu', { timeout: 1000 })
+    const options = await page.$$eval('.add-menu-item .add-menu-item-name', els =>
+      els.map(el => el.textContent?.trim() ?? '')
+    )
+    // Close the menu before subsequent tests
+    await page.keyboard.press('Escape')
+    await new Promise(r => setTimeout(r, 120))
+
     expect(options).toContain('path.class')
     expect(options).toContain('path.heap_type')
     expect(options).toContain('process_name')
