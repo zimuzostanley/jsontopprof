@@ -34,14 +34,6 @@ function assignedAs(role: ColumnRole): ColumnInfo[] {
     .filter((c): c is ColumnInfo => c !== undefined)
 }
 
-function addColumn(name: string, role: ColumnRole): void {
-  setRole(name, role)
-}
-
-function removeColumn(name: string): void {
-  setRole(name, 'none')
-}
-
 function colLabel(col: ColumnInfo): string {
   if (col.jsonKey !== undefined) return `${col.source}.${col.jsonKey}`
   return col.name
@@ -55,12 +47,35 @@ function renderAddDropdown(role: ColumnRole, label: string): m.Vnode | null {
     value: '',
     onchange: (e: Event) => {
       const val = (e.target as HTMLSelectElement).value
-      if (val) addColumn(val, role)
+      if (val) setRole(val, role)
     },
   }, [
     m('option', { value: '', disabled: true, selected: true }, `+ ${label}`),
     ...available.map(c => m('option', { value: c.name }, colLabel(c))),
   ])
+}
+
+function sectionHeader(
+  title: string,
+  subtitle: string,
+  role: ColumnRole,
+  addLabel: string,
+): m.Vnode {
+  return m('.card-title-row', [
+    m('.section-heading', [
+      m('.card-title', title),
+      m('.section-subtitle', subtitle),
+    ]),
+    renderAddDropdown(role, addLabel),
+  ])
+}
+
+function removeBtn(name: string): m.Vnode {
+  return m('button.remove-btn', {
+    onclick: () => setRole(name, 'none'),
+    'aria-label': `Remove ${name}`,
+    title: 'Remove',
+  }, '×')
 }
 
 export const Configure: m.Component = {
@@ -75,55 +90,63 @@ export const Configure: m.Component = {
     return m('div', [
       // Frames
       m('.card', [
-        m('.card-title-row', [
-          m('.card-title', 'Frames'),
-          renderAddDropdown('frame', 'Add frame'),
-        ]),
+        sectionHeader(
+          'Frames',
+          'The call stack, ordered from root to leaf.',
+          'frame',
+          'Add frame',
+        ),
         frames.length === 0
-          ? m('.empty-hint', 'Select at least one column to define the call stack.')
+          ? m('.empty-hint.empty-hint-block',
+              'Select at least one column to define the call stack.')
           : m('.frame-order', frames.map((col, idx) => {
               const isFirst = idx === 0
               const isLast = idx === frames.length - 1
+              const showRootLeaf = frames.length > 1
               return m('.frame-item', { key: col.name }, [
-                m('.frame-idx', `${idx + 1}.`),
+                m('.frame-idx', idx + 1),
                 m('.frame-name', colLabel(col)),
-                frames.length > 1
-                  ? m('.frame-label', isFirst ? 'root' : isLast ? 'leaf' : '')
-                  : null,
-                col.isJsonArrayField
-                  ? m('.frame-label', `expands ${col.source}`)
-                  : null,
+                m('.frame-tags', [
+                  showRootLeaf && isFirst
+                    ? m('.frame-pill.frame-pill-accent', 'root') : null,
+                  showRootLeaf && isLast
+                    ? m('.frame-pill.frame-pill-accent', 'leaf') : null,
+                  col.isJsonArrayField
+                    ? m('.frame-pill.frame-pill-muted', `from ${col.source}`) : null,
+                ]),
                 m('.frame-arrows', [
                   m('button', {
                     disabled: isFirst,
                     onclick: () => moveFrame(col.name, -1),
                     'aria-label': `Move ${col.name} up`,
-                  }, '\u25B2'),
+                    title: 'Move up',
+                  }, '▴'),
                   m('button', {
                     disabled: isLast,
                     onclick: () => moveFrame(col.name, 1),
                     'aria-label': `Move ${col.name} down`,
-                  }, '\u25BC'),
+                    title: 'Move down',
+                  }, '▾'),
                 ]),
-                m('button.remove-btn', {
-                  onclick: () => removeColumn(col.name),
-                  'aria-label': `Remove ${col.name}`,
-                }, '\u00D7'),
+                removeBtn(col.name),
               ])
             })),
       ]),
 
       // Metrics
       m('.card', [
-        m('.card-title-row', [
-          m('.card-title', 'Metrics'),
-          renderAddDropdown('metric', 'Add metric'),
-        ]),
+        sectionHeader(
+          'Metrics',
+          'Numeric values aggregated across samples.',
+          'metric',
+          'Add metric',
+        ),
         m('.metric-list', [
           ...metrics.map(col =>
             m('.metric-item', { key: col.name }, [
               m('.metric-name', colLabel(col)),
               m('.metric-controls', [
+                m('span.metric-unit-label', 'unit'),
                 m('input[type=text].unit-input', {
                   'aria-label': `Unit for ${col.name}`,
                   list: 'unit-suggestions',
@@ -133,71 +156,69 @@ export const Configure: m.Component = {
                   },
                   placeholder: 'unit',
                 }),
-                m('button.remove-btn', {
-                  onclick: () => removeColumn(col.name),
-                  'aria-label': `Remove ${col.name}`,
-                }, '\u00D7'),
+                removeBtn(col.name),
               ]),
             ])
           ),
           m('datalist#unit-suggestions', { key: '_datalist' },
             UNIT_SUGGESTIONS.map(u => m('option', { value: u })),
           ),
-          m('.metric-item', { key: '_rows' }, [
+          m('.metric-item.metric-item-auto', { key: '_rows' }, [
             m('.metric-name', 'rows'),
-            m('.rows-badge', 'auto \u2014 count of input rows'),
+            m('.rows-badge', 'auto — one per input row'),
           ]),
         ]),
       ]),
 
       // Labels
       m('.card', [
-        m('.card-title-row', [
-          m('.card-title', 'Labels'),
-          renderAddDropdown('label', 'Add label'),
-        ]),
+        sectionHeader(
+          'Labels',
+          'Extra metadata attached to every sample.',
+          'label',
+          'Add label',
+        ),
         labels.length === 0
-          ? m('.empty-hint', 'Optional metadata attached to each sample.')
+          ? m('.empty-hint.empty-hint-block', 'Optional.')
           : m('.tag-list', labels.map(col =>
               m('.tag-item', { key: col.name }, [
                 m('span', colLabel(col)),
-                m('button.remove-btn', {
-                  onclick: () => removeColumn(col.name),
-                  'aria-label': `Remove ${col.name}`,
-                }, '\u00D7'),
+                removeBtn(col.name),
               ])
             )),
       ]),
 
       // Partition
       m('.card', [
-        m('.card-title-row', [
-          m('.card-title', 'Partition by'),
-          renderAddDropdown('partition', 'Add partition'),
-        ]),
+        sectionHeader(
+          'Partition by',
+          'Split output into one pprof per distinct value.',
+          'partition',
+          'Add partition',
+        ),
         partitions.length === 0
-          ? m('.empty-hint', 'Optional. Splits output into separate profiles.')
+          ? m('.empty-hint.empty-hint-block', 'Optional.')
           : m('.tag-list', partitions.map(col =>
               m('.tag-item', { key: col.name }, [
                 m('span', colLabel(col)),
-                m('button.remove-btn', {
-                  onclick: () => removeColumn(col.name),
-                  'aria-label': `Remove ${col.name}`,
-                }, '\u00D7'),
+                removeBtn(col.name),
               ])
             )),
       ]),
 
       // Generate
-      m('.actions', [
-        m('.spacer'),
-        S.generateError
-          ? m('span', { style: 'color: var(--error); font-size: 0.85rem;' }, S.generateError)
+      m('.actions.generate-actions', [
+        frames.length === 0
+          ? m('.generate-hint', 'Add at least one frame to generate profiles.')
           : null,
+        S.generateError
+          ? m('.inline-error', S.generateError)
+          : null,
+        m('.spacer'),
         S.generating
           ? m('button.btn.primary', { disabled: true }, [
               m('.spinner'),
-              S.progress ? ` ${S.progress.message}` : ' Generating\u2026',
+              S.progress ? ` ${S.progress.message}` : ' Generating…',
             ])
           : m('button.btn.primary', {
               disabled: frames.length === 0,
