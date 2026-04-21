@@ -2736,8 +2736,7 @@ const Configure = {
             m$1(".frame-name", colLabel(col)),
             m$1(".frame-tags", [
               showRootLeaf && isFirst ? m$1(".frame-pill.frame-pill-accent", "root") : null,
-              showRootLeaf && isLast ? m$1(".frame-pill.frame-pill-accent", "leaf") : null,
-              col.isJsonArrayField ? m$1(".frame-pill.frame-pill-muted", `from ${col.source}`) : null
+              showRootLeaf && isLast ? m$1(".frame-pill.frame-pill-accent", "leaf") : null
             ]),
             m$1(".frame-arrows", [
               m$1("button", {
@@ -3697,17 +3696,6 @@ select { cursor: pointer; }
 .frame-pill-accent {
   background: var(--accent-bg);
   color: var(--accent);
-}
-.frame-pill-muted {
-  background: transparent;
-  color: var(--text-tertiary);
-  border: 1px solid var(--border);
-  font-family: var(--mono);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 500;
-  font-size: 0.68rem;
-  padding: 1px 6px;
 }
 
 .frame-arrows { display: flex; gap: 1px; flex-shrink: 0; }
