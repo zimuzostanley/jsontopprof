@@ -2585,12 +2585,6 @@ function availableFor(role) {
 function assignedAs(role) {
   return (role === "frame" ? S.frameOrder : S.columns.filter((c) => S.roles.get(c.name) === role).map((c) => c.name)).map((name) => S.columns.find((c) => c.name === name)).filter((c) => c !== void 0);
 }
-function addColumn(name, role) {
-  setRole(name, role);
-}
-function removeColumn(name) {
-  setRole(name, "none");
-}
 function colLabel(col) {
   if (col.jsonKey !== void 0) return `${col.source}.${col.jsonKey}`;
   return col.name;
@@ -2603,12 +2597,28 @@ function renderAddDropdown(role, label) {
     value: "",
     onchange: (e) => {
       const val = e.target.value;
-      if (val) addColumn(val, role);
+      if (val) setRole(val, role);
     }
   }, [
     m$1("option", { value: "", disabled: true, selected: true }, `+ ${label}`),
     ...available.map((c) => m$1("option", { value: c.name }, colLabel(c)))
   ]);
+}
+function sectionHeader(title, subtitle, role, addLabel) {
+  return m$1(".card-title-row", [
+    m$1(".section-heading", [
+      m$1(".card-title", title),
+      m$1(".section-subtitle", subtitle)
+    ]),
+    renderAddDropdown(role, addLabel)
+  ]);
+}
+function removeBtn(name) {
+  return m$1("button.remove-btn", {
+    onclick: () => setRole(name, "none"),
+    "aria-label": `Remove ${name}`,
+    title: "Remove"
+  }, "×");
 }
 const Configure = {
   view() {
@@ -2620,48 +2630,59 @@ const Configure = {
     return m$1("div", [
       // Frames
       m$1(".card", [
-        m$1(".card-title-row", [
-          m$1(".card-title", "Frames"),
-          renderAddDropdown("frame", "Add frame")
-        ]),
-        frames.length === 0 ? m$1(".empty-hint", "Select at least one column to define the call stack.") : m$1(".frame-order", frames.map((col, idx) => {
+        sectionHeader(
+          "Frames",
+          "The call stack, ordered from root to leaf.",
+          "frame",
+          "Add frame"
+        ),
+        frames.length === 0 ? m$1(
+          ".empty-hint.empty-hint-block",
+          "Select at least one column to define the call stack."
+        ) : m$1(".frame-order", frames.map((col, idx) => {
           const isFirst = idx === 0;
           const isLast = idx === frames.length - 1;
+          const showRootLeaf = frames.length > 1;
           return m$1(".frame-item", { key: col.name }, [
-            m$1(".frame-idx", `${idx + 1}.`),
+            m$1(".frame-idx", idx + 1),
             m$1(".frame-name", colLabel(col)),
-            frames.length > 1 ? m$1(".frame-label", isFirst ? "root" : isLast ? "leaf" : "") : null,
-            col.isJsonArrayField ? m$1(".frame-label", `expands ${col.source}`) : null,
+            m$1(".frame-tags", [
+              showRootLeaf && isFirst ? m$1(".frame-pill.frame-pill-accent", "root") : null,
+              showRootLeaf && isLast ? m$1(".frame-pill.frame-pill-accent", "leaf") : null,
+              col.isJsonArrayField ? m$1(".frame-pill.frame-pill-muted", `from ${col.source}`) : null
+            ]),
             m$1(".frame-arrows", [
               m$1("button", {
                 disabled: isFirst,
                 onclick: () => moveFrame(col.name, -1),
-                "aria-label": `Move ${col.name} up`
-              }, "▲"),
+                "aria-label": `Move ${col.name} up`,
+                title: "Move up"
+              }, "▴"),
               m$1("button", {
                 disabled: isLast,
                 onclick: () => moveFrame(col.name, 1),
-                "aria-label": `Move ${col.name} down`
-              }, "▼")
+                "aria-label": `Move ${col.name} down`,
+                title: "Move down"
+              }, "▾")
             ]),
-            m$1("button.remove-btn", {
-              onclick: () => removeColumn(col.name),
-              "aria-label": `Remove ${col.name}`
-            }, "×")
+            removeBtn(col.name)
           ]);
         }))
       ]),
       // Metrics
       m$1(".card", [
-        m$1(".card-title-row", [
-          m$1(".card-title", "Metrics"),
-          renderAddDropdown("metric", "Add metric")
-        ]),
+        sectionHeader(
+          "Metrics",
+          "Numeric values aggregated across samples.",
+          "metric",
+          "Add metric"
+        ),
         m$1(".metric-list", [
           ...metrics.map(
             (col) => m$1(".metric-item", { key: col.name }, [
               m$1(".metric-name", colLabel(col)),
               m$1(".metric-controls", [
+                m$1("span.metric-unit-label", "unit"),
                 m$1("input[type=text].unit-input", {
                   "aria-label": `Unit for ${col.name}`,
                   list: "unit-suggestions",
@@ -2671,10 +2692,7 @@ const Configure = {
                   },
                   placeholder: "unit"
                 }),
-                m$1("button.remove-btn", {
-                  onclick: () => removeColumn(col.name),
-                  "aria-label": `Remove ${col.name}`
-                }, "×")
+                removeBtn(col.name)
               ])
             ])
           ),
@@ -2683,48 +2701,47 @@ const Configure = {
             { key: "_datalist" },
             UNIT_SUGGESTIONS.map((u) => m$1("option", { value: u }))
           ),
-          m$1(".metric-item", { key: "_rows" }, [
+          m$1(".metric-item.metric-item-auto", { key: "_rows" }, [
             m$1(".metric-name", "rows"),
-            m$1(".rows-badge", "auto — count of input rows")
+            m$1(".rows-badge", "auto — one per input row")
           ])
         ])
       ]),
       // Labels
       m$1(".card", [
-        m$1(".card-title-row", [
-          m$1(".card-title", "Labels"),
-          renderAddDropdown("label", "Add label")
-        ]),
-        labels.length === 0 ? m$1(".empty-hint", "Optional metadata attached to each sample.") : m$1(".tag-list", labels.map(
+        sectionHeader(
+          "Labels",
+          "Extra metadata attached to every sample.",
+          "label",
+          "Add label"
+        ),
+        labels.length === 0 ? m$1(".empty-hint.empty-hint-block", "Optional.") : m$1(".tag-list", labels.map(
           (col) => m$1(".tag-item", { key: col.name }, [
             m$1("span", colLabel(col)),
-            m$1("button.remove-btn", {
-              onclick: () => removeColumn(col.name),
-              "aria-label": `Remove ${col.name}`
-            }, "×")
+            removeBtn(col.name)
           ])
         ))
       ]),
       // Partition
       m$1(".card", [
-        m$1(".card-title-row", [
-          m$1(".card-title", "Partition by"),
-          renderAddDropdown("partition", "Add partition")
-        ]),
-        partitions.length === 0 ? m$1(".empty-hint", "Optional. Splits output into separate profiles.") : m$1(".tag-list", partitions.map(
+        sectionHeader(
+          "Partition by",
+          "Split output into one pprof per distinct value.",
+          "partition",
+          "Add partition"
+        ),
+        partitions.length === 0 ? m$1(".empty-hint.empty-hint-block", "Optional.") : m$1(".tag-list", partitions.map(
           (col) => m$1(".tag-item", { key: col.name }, [
             m$1("span", colLabel(col)),
-            m$1("button.remove-btn", {
-              onclick: () => removeColumn(col.name),
-              "aria-label": `Remove ${col.name}`
-            }, "×")
+            removeBtn(col.name)
           ])
         ))
       ]),
       // Generate
-      m$1(".actions", [
+      m$1(".actions.generate-actions", [
+        frames.length === 0 ? m$1(".generate-hint", "Add at least one frame to generate profiles.") : null,
+        S.generateError ? m$1(".inline-error", S.generateError) : null,
         m$1(".spacer"),
-        S.generateError ? m$1("span", { style: "color: var(--error); font-size: 0.85rem;" }, S.generateError) : null,
         S.generating ? m$1("button.btn.primary", { disabled: true }, [
           m$1(".spinner"),
           S.progress ? ` ${S.progress.message}` : " Generating…"
@@ -3208,11 +3225,19 @@ body {
 }
 .card-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 .card-title-row .card-title { margin-bottom: 0; }
+.section-heading { flex: 1; min-width: 0; }
+.section-heading .card-title { margin-bottom: 2px; }
+.section-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
 
 /* --- Buttons --- */
 .btn {
@@ -3337,12 +3362,37 @@ select { cursor: pointer; }
 .preview-table tr:last-child td { border-bottom: none; }
 .preview-table .truncated { color: var(--text-tertiary); font-style: italic; }
 
-/* --- Configure: add column dropdown --- */
+/* --- Configure: add column dropdown (styled as button) --- */
 .add-col-select {
-  width: 120px;
-  font-family: var(--mono);
-  font-size: 0.75rem;
+  flex-shrink: 0;
+  min-width: 120px;
+  height: 28px;
+  padding: 0 24px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
   color: var(--text-secondary);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 12px, calc(100% - 7px) 12px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.add-col-select:hover {
+  background-color: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-focus);
+}
+.add-col-select:focus {
+  outline: none;
+  border-color: var(--border-focus);
 }
 
 /* --- Configure: empty state --- */
@@ -3351,103 +3401,221 @@ select { cursor: pointer; }
   color: var(--text-tertiary);
   padding: 2px 0;
 }
+.empty-hint-block {
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  background: transparent;
+}
 
 /* --- Configure: tag list (labels, partitions) --- */
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.8rem;
   background: var(--bg-accent);
+  transition: border-color var(--transition);
 }
+.tag-item:hover { border-color: var(--border-focus); }
 
 /* --- Configure: remove button --- */
 .remove-btn {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   line-height: 1;
-  transition: color var(--transition);
+  transition: all var(--transition);
 }
-.remove-btn:hover { color: var(--error); }
+.remove-btn:hover {
+  background: var(--error-bg);
+  color: var(--error);
+  border-color: var(--error);
+}
 
 /* --- Configure: frame order --- */
-.frame-order { display: flex; flex-direction: column; gap: 3px; }
+.frame-order { display: flex; flex-direction: column; gap: 4px; }
 .frame-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 7px 8px 7px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-accent);
-  font-family: var(--mono);
-  font-size: 0.8rem;
+  transition: border-color var(--transition);
 }
+.frame-item:hover { border-color: var(--border-focus); }
 .frame-item .frame-idx {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   color: var(--accent);
+  font-family: var(--mono);
   font-size: 0.72rem;
   font-weight: 600;
-  min-width: 18px;
+  line-height: 1;
 }
-.frame-item .frame-name { flex: 1; }
-.frame-item .frame-label {
-  font-size: 0.68rem;
-  color: var(--text-tertiary);
+.frame-item .frame-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.frame-tags {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.frame-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 3px;
   font-family: var(--sans);
+  font-size: 0.64rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+}
+.frame-pill-accent {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.frame-pill-muted {
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 0.68rem;
+  padding: 1px 6px;
 }
 
-.frame-arrows { display: flex; gap: 1px; }
+.frame-arrows { display: flex; gap: 1px; flex-shrink: 0; }
 .frame-arrows button {
   width: 22px;
   height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
   cursor: pointer;
-  font-size: 0.65rem;
-  transition: background var(--transition);
+  font-size: 0.72rem;
+  line-height: 1;
+  transition: all var(--transition);
 }
-.frame-arrows button:hover { background: var(--bg-hover); }
+.frame-arrows button:hover:not(:disabled) {
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--border);
+}
 .frame-arrows button:disabled { opacity: 0.25; cursor: default; }
 
 /* --- Configure: metric list --- */
-.metric-list { display: flex; flex-direction: column; gap: 3px; }
+.metric-list { display: flex; flex-direction: column; gap: 4px; }
 .metric-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-accent);
-  font-family: var(--mono);
-  font-size: 0.8rem;
+  transition: border-color var(--transition);
 }
-.metric-item .metric-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.metric-item .rows-badge { font-size: 0.72rem; color: var(--success); font-family: var(--sans); font-weight: 500; }
-.metric-controls { display: flex; align-items: center; gap: 4px; }
-.unit-input { width: 120px; font-family: var(--mono) !important; font-size: 0.75rem !important; }
+.metric-item:hover { border-color: var(--border-focus); }
+.metric-item .metric-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-item .rows-badge {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  font-family: var(--sans);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.metric-item-auto {
+  background: transparent;
+  border-style: dashed;
+}
+.metric-item-auto:hover { border-color: var(--border); }
+.metric-item-auto .metric-name { color: var(--text-secondary); }
+
+.metric-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.metric-unit-label {
+  font-size: 0.64rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.unit-input {
+  width: 110px;
+  height: 24px !important;
+  font-family: var(--mono) !important;
+  font-size: 0.78rem !important;
+}
+
+/* --- Configure: generate actions bar --- */
+.generate-actions {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.generate-hint {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+}
+.inline-error {
+  font-size: 0.78rem;
+  color: var(--error);
+  font-weight: 500;
+}
 
 /* --- Results --- */
 .profile-list { display: flex; flex-direction: column; gap: 6px; }
@@ -3636,7 +3804,8 @@ select { cursor: pointer; }
 @media (max-width: 600px) {
   .shell { padding: 12px 8px 36px; }
   .profile-card { flex-direction: column; align-items: stretch; gap: 6px; }
-  .add-col-select { width: 100px; }
+  .add-col-select { min-width: 104px; }
+  .card-title-row { flex-wrap: wrap; }
 }
 `;
 const style = document.createElement("style");
