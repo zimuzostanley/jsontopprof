@@ -349,7 +349,6 @@ select { cursor: pointer; }
   transition: background var(--transition);
 }
 .add-menu-item:hover { background: var(--bg-hover); }
-.add-menu-item:first-child:hover { background: var(--accent-bg); color: var(--accent); }
 .add-menu-item-name {
   flex: 1;
   min-width: 0;
@@ -442,7 +441,7 @@ select { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px 7px 8px;
+  padding: 7px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-accent);

@@ -23,6 +23,8 @@ function closeMenu(): void {
 // ── Column helpers ──
 
 function isJsonParent(col: ColumnInfo): boolean {
+  // A column is a "parent" if its sub-fields are the assignable units
+  // (JSON object columns expand into keys, JSON array columns into per-element fields).
   if (col.isJsonArray) return true
   if (S.columns.some(c => c.source === col.name && c.jsonKey !== undefined && !c.isJsonArrayField)) {
     return col.name === col.source && !col.jsonKey
@@ -147,8 +149,7 @@ function renderAddTrigger(role: ColumnRole, label: string): m.Vnode | null {
       type: 'button',
       'aria-haspopup': 'listbox',
       'aria-expanded': String(isOpen),
-      onclick: (e: MouseEvent) => {
-        e.stopPropagation()
+      onclick: () => {
         if (isOpen) closeMenu()
         else openMenu(role)
       },
