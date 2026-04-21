@@ -221,8 +221,6 @@ export const Configure: m.Component = {
                     ? m('.frame-pill.frame-pill-accent', 'root') : null,
                   showRootLeaf && isLast
                     ? m('.frame-pill.frame-pill-accent', 'leaf') : null,
-                  col.isJsonArrayField
-                    ? m('.frame-pill.frame-pill-muted', `from ${col.source}`) : null,
                 ]),
                 m('.frame-arrows', [
                   m('button', {

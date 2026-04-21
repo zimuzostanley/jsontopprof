@@ -496,17 +496,6 @@ select { cursor: pointer; }
   background: var(--accent-bg);
   color: var(--accent);
 }
-.frame-pill-muted {
-  background: transparent;
-  color: var(--text-tertiary);
-  border: 1px solid var(--border);
-  font-family: var(--mono);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 500;
-  font-size: 0.68rem;
-  padding: 1px 6px;
-}
 
 .frame-arrows { display: flex; gap: 1px; flex-shrink: 0; }
 .frame-arrows button {
